@@ -1,1 +1,0 @@
-{"version":3,"file":"strategyLastPrice.d.ts","sourceRoot":"","sources":["../../backend/strategy/strategyLastPrice.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,WAAW,EAAE,MAAM,uBAAuB,CAAA;AACnD,OAAO,EAAE,YAAY,EAAE,MAAM,gBAAgB,CAAA;AAyB7C,qBAAa,iBAAkB,SAAQ,YAAY;IACjD,QAAQ,IAAK,WAAW,GAAG,SAAS;CAKrC"}

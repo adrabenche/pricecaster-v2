@@ -111,3 +111,7 @@ test/temp/*.teal
 dump/*
 test/temp/*
 keys/*
+
+DEPLOY-*
+VAA-VERIFY-*
+build/*
