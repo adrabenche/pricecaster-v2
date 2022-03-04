@@ -16,9 +16,10 @@
  * limitations under the License.
  */
 import React from 'react'
+import { Audio } from 'react-loader-spinner'
+
 const PricecasterSdk = require('pricecaster-client-sdk')
 const humanizeDuration = require('humanize-duration')
-
 const APP_ID = 75517911
 const SOLANA_CLUSTER = 'devnet'
 
@@ -33,7 +34,7 @@ class PriceView extends React.Component {
     }
   }
 
-  
+
   async componentDidMount() {
     await this.sdk.connect()
     this.timer = setInterval(() => this.fetchGlobalState(), 2000)
@@ -55,38 +56,53 @@ class PriceView extends React.Component {
   }
 
   render() {
+    const spinner = this.state.priceData.length === 0 ? (<div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+    }}>
+      <Audio color="orange" ariaLabel='loading' />
+      <p>Please wait...</p>
+    </div>) : null
+
+    const price_table_data = (this.state.priceData.map((k, i) => {
+      const exp = parseFloat(k.exp.toString())
+      return (<tr key={i} className={k.change < 0 ? "valueup" : (k.change > 0 ? "valuedown" : "valueequal")}>
+        <td>{k.symbol.toString()}</td>
+        <td>{parseFloat(k.price.toString()) / (10 ** -exp)}</td>
+        <td>{parseFloat(k.twap.toString()) / (10 ** -exp)}</td>
+        <td>{parseFloat(k.conf.toString()) / (10 ** -exp)}</td>
+        <td>{parseFloat(k.twac.toString()) / (10 ** -exp)}</td>
+        <td>{humanizeDuration(Date.now() - parseInt(k.time) * 1000, { round: true })}</td>
+      </tr>)
+    }))
+
+    const table = this.state.priceData.length !== 0 ? (
+      <table>
+        <tbody>
+          <tr>
+            <th>Symbol</th>
+            <th>Price</th>
+            <th>Avg Price</th>
+            <th>Confidence</th>
+            <th>Avg Confidence</th>
+            <th>Last update</th>
+          </tr>
+          {price_table_data}
+        </tbody>
+      </table>) : null
+
     return (
       <div>
-        <h1>Price Explorer</h1>
+        <h1>Pricecaster Explorer</h1>
         <h2>
           Algorand Application <a href={"https://testnet.algoexplorer.io/application/" + APP_ID}
             target="_blank" rel="noreferrer">{APP_ID}</a>
         </h2>
         <hr />
-        <table>
-          <tbody>
-            <tr>
-              <th>Symbol</th>
-              <th>Price</th>
-              <th>Avg Price</th>
-              <th>Confidence</th>
-              <th>Avg Confidence</th>
-              <th>Last update</th>
-            </tr>
-            {this.state.priceData.map((k, i) => {
-              const exp = parseFloat(k.exp.toString())
-              return (<tr key={i} className={k.change < 0 ? "valueup" : (k.change > 0 ? "valuedown" : "valueequal")}>
-                <td>{k.symbol.toString()}</td>
-                <td>{parseFloat(k.price.toString()) / (10 ** -exp)}</td>
-                <td>{parseFloat(k.twap.toString()) / (10 ** -exp)}</td>
-                <td>{parseFloat(k.conf.toString()) / (10 ** -exp)}</td>
-                <td>{parseFloat(k.twac.toString()) / (10 ** -exp)}</td>
-                <td>{humanizeDuration(Date.now() - parseInt(k.time) * 1000, { round: true })}</td>
-                
-              </tr>)
-            })}
-          </tbody>
-        </table>
+        {spinner}
+        {table}
       </div>
     )
   }
