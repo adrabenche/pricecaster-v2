@@ -1,7 +1,7 @@
 module.exports = {
   sources: {
-    portal_core_pyteal: 'wormhole/algorand/portal_core.py',
-    vaa_verify_pyteal: '',
+    portal_core_pyteal: '',
+    vaa_verify_pyteal: 'wormhole/algorand/vaa_verify.py',
     pricecaster_pyteal: 'teal/pyteal/pricecaster-v2.py'
   },
   networks: {

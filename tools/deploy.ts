@@ -1,3 +1,23 @@
+/**
+ *
+ * Pricecaster V2 Deployment Tool.
+ *
+ * Copyright 2022 Wormhole Project Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
 /* eslint-disable linebreak-style */
 import algosdk from 'algosdk'
 const { exit } = require('process')
@@ -26,19 +46,8 @@ function signCallback (sender: string, tx: algosdk.Transaction) {
 async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreId: string) {
   const pclib = new PricecasterLib.PricecasterLib(algodClient)
 
-  // let out = spawnSync('python', [config.sources.portal_core_pyteal])
-  // pclib.setCompiledApprovalProgram('wormholeCore', out[1], out[2])
-
-  const out = spawnSync('python', [config.sources.pricecaster_pyteal])
+  let out = spawnSync('python', [config.sources.pricecaster_pyteal])
   console.log(out.output.toString())
-
-  // console.log('Creating Core Contract...')
-  // const txId = await pclib.createWormholeCoreApp(fromAddress, signCallback)
-  // console.log('txId: ' + txId)
-  // const txResponse = await pclib.waitForTransactionResponse(txId)
-  // const appId = pclib.appIdFromCreateAppResponse(txResponse)
-  // console.log('Deployment App Id: %d', appId)
-  // pclib.setAppId('wormholeCore', appId)
 
   console.log('Creating Pricekeeper V2...')
   const txId = await pclib.createPricecasterApp(fromAddress, coreId, signCallback)
@@ -48,34 +57,24 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   console.log('Deployment App Id: %d', pkAppId)
   pclib.setAppId('pricecaster', pkAppId)
 
-  // console.log('Setting VAA Processor authid parameter...')
-  // txId = await pclib.setAuthorizedAppId(fromAddress, pkAppId, signCallback)
-  // console.log('txId: ' + txId)
-  // txResponse = await pclib.waitForTransactionResponse(txId)
+  console.log('Compiling verify VAA stateless code...')
+  out = spawnSync('python', [config.sources.vaa_verify_pyteal])
+  console.log(out.output.toString())
 
-  // console.log('Compiling verify VAA stateless code...')
-  // out = spawnSync('python', [config.sources.vaa_verify_pyteal])
-  // console.log(out.output.toString())
+  spawnSync('python', [config.sources.vaa_verify_pyteal])
+  const program = fs.readFileSync('vaa_verify.teal', 'utf8')
+  const compiledVerifyProgram = await pclib.compileProgram(program)
+  console.log('Stateless program address: ', compiledVerifyProgram.hash)
 
-  // spawnSync('python', [config.sources.vaa_verify_pyteal, appId])
-  // const program = fs.readFileSync(config.sources.vaa_verify_pyteal, 'utf8')
-  // const compiledVerifyProgram = await pclib.compileProgram(program)
-  // console.log('Stateless program address: ', compiledVerifyProgram.hash)
+  const dt = Date.now().toString()
+  const resultsFileName = 'DEPLOY-' + dt
+  const binaryFileName = 'VAA-VERIFY-' + dt + '.BIN'
 
-  // console.log('Setting VAA Processor stateless code...')
-  // const txid = await pclib.setVAAVerifyProgramHash(fromAddress, compiledVerifyProgram.hash, signCallback)
-  // console.log('txId: ' + txId)
-  // await pclib.waitForTransactionResponse(txid)
+  console.log(`Writing deployment results file ${resultsFileName}...`)
+  fs.writeFileSync(resultsFileName, `wormholeCoreAppId: ${coreId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}'`)
 
-  // const dt = Date.now().toString()
-  // const resultsFileName = 'DEPLOY-' + dt
-  // const binaryFileName = 'VAA-VERIFY-' + dt + '.BIN'
-
-  // console.log(`Writing deployment results file ${resultsFileName}...`)
-  // fs.writeFileSync(resultsFileName, `vaaProcessorAppId: ${appId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}'`)
-
-  // console.log(`Writing stateless code binary file ${binaryFileName}...`)
-  // fs.writeFileSync(binaryFileName, compiledVerifyProgram.bytes)
+  console.log(`Writing stateless code binary file ${binaryFileName}...`)
+  fs.writeFileSync(binaryFileName, compiledVerifyProgram.bytes)
 }
 
 (async () => {
