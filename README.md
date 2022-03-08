@@ -156,15 +156,19 @@ npm install
 
 ## Deployment of Applications
 
+* The Wormhole Core contract and the VAA Verify code have it's own deployment tool `admin.py` at the Certus One repository. 
+
+* To deploy the Pricecaster-V2, follow the instructions below.
+
 Use the deployment tools in `tools` subdirectory.
 
-* To deploy the VAA processor  and Pricekeeper V2 app to use with Wormhole, make sure you have Python environment running (preferably >=3.7.0), and `pyteal` installed with `pip3`.  
-* The deployment program will:  generate all TEAL files from PyTEAL sources, deploy the VAA Processor application, deploy the Pricekeeper V2 contract, compile the stateless program and set the correct parameters for the contracts: authid, vphash in VAA Processor and vaapid in the Pricekeeper app.
+* To deploy Pricecaster V2 TEAL to use with Wormhole, make sure you have Python environment running (preferably >=3.7.0), and `pyteal` installed with `pip3`.  
+* The deployment program will:  generate all TEAL files from PyTEAL sources and deploy the Pricekeeper V2 contract.
 
-For example, using `deploy-wh` with sample output: 
+For example, using `deploy` with sample output: 
 
 ```
-$ node tools\deploy-wh.js tools\gkeys.test 1000  OPDM7ACAW64Q4VBWAL77Z5SHSJVZZ44V3BAN7W44U43SUXEOUENZMZYOQU testnet keys\owner.key
+$ npx ts-node tools\deploy.ts tools\gkeys.test 1000  OPDM7ACAW64Q4VBWAL77Z5SHSJVZZ44V3BAN7W44U43SUXEOUENZMZYOQU testnet keys\owner.key
 
 Pricecaster v2 Apps Deployment Tool
 

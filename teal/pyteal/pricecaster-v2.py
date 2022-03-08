@@ -2,7 +2,7 @@
 """
 ================================================================================================
 
-The Pricekeeper II Program
+The Pricecaster II Program
 
 v3.0
 
@@ -152,7 +152,7 @@ def store():
         Approve()])
 
 
-def pricekeeper_program():
+def pricecaster_program():
     handle_create = Return(bootstrap())
     handle_update = Return(is_creator())
     handle_delete = Return(is_creator())
@@ -173,8 +173,8 @@ def clear_state_program():
 
 if __name__ == "__main__":
 
-    approval_outfile = "teal/wormhole/build/pricekeeper-v2-approval.teal"
-    clear_state_outfile = "teal/wormhole/build/pricekeeper-v2-clear.teal"
+    approval_outfile = "teal/build/pricecaster-v2-approval.teal"
+    clear_state_outfile = "teal/build/pricecaster-v2-clear.teal"
 
     if len(sys.argv) >= 2:
         approval_outfile = sys.argv[1]
@@ -182,11 +182,11 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         clear_state_outfile = sys.argv[2]
 
-    print("Pricekeeper V2 Program, (c) 2022 Wormhole Project Contributors")
+    print("Pricecaster V2 Program, (c) 2022 Wormhole Project Contributors")
     print("Compiling approval program...")
 
     with open(approval_outfile, "w") as f:
-        compiled = compileTeal(pricekeeper_program(),
+        compiled = compileTeal(pricecaster_program(),
                                mode=Mode.Application, version=5)
         f.write(compiled)
 
