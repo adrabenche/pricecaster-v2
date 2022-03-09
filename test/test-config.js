@@ -1,4 +1,5 @@
 module.exports = {
+  CORE_CONTRACT_ID: '10',
   // Configurations to use:
   //
   // Algoexplorer Betanet endpoint:

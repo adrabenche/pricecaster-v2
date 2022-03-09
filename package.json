@@ -9,7 +9,7 @@
     "prepack": "npm run build",
     "start": "npm run compile && cross-env PRICECASTER_SETTINGS=./settings/settings-worm.js node build/main.js",
     "start-production": "npm run compile && cross-env NODE_ENV='production' PRICECASTER_SETTINGS=./settings/settings-worm.js node build/main.js",
-    "test-wormhole-sc": "mocha test/wormhole-sc-test.js --timeout 60000 --bail --allow-uncaught"
+    "test-sc": "mocha test/test-sc.js --timeout 60000"
   },
   "author": "Randlabs inc",
   "license": "ISC",

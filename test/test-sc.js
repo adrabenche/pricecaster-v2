@@ -10,6 +10,7 @@ const TestLib = require('./testlib.js')
 const { makePaymentTxnWithSuggestedParams } = require('algosdk')
 const testConfig = require('./test-config')
 const { extract3, arrayChunks } = require('../tools/app-tools')
+const { CORE_CONTRACT_ID } = require('./test-config')
 chai.use(require('chai-as-promised'))
 const testLib = new TestLib.TestLib()
 
@@ -18,7 +19,7 @@ let algodClient
 let verifyProgramHash
 let compiledVerifyProgram
 let ownerAddr, otherAddr
-let appId, pkAppId
+let pkAppId
 
 const signatures = {}
 
@@ -66,28 +67,156 @@ const guardianPrivKeys = [
   'b71d23908e4cf5d6cd973394f3a4b6b164eb1065785feee612efdfd8d30005ed'
 ]
 
-const PYTH_EMITTER       = '0xf346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
-const OTHER_PYTH_EMITTER = '0x0000000000000000000000000000000000000000000000000000000000000001'
+const PYTH_EMITTER = '0xf346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
+// const OTHER_PYTH_EMITTER = '0x0000000000000000000000000000000000000000000000000000000000000001'
 // const PYTH_PAYLOAD = '0x50325748000101230abfe0ec3b460bd55fc4fb36356716329915145497202b8eb8bf1af6a0a3b9fe650f0367d4a7ef9815a593ea15d36593f0643aaaf0149bb04be67ab851decd010000002f17254388fffffff70000002eed73d9000000000070d3b43f0000000037faa03d000000000e9e555100000000894af11c0000000037faa03d000000000dda6eb801000000000061a5ff9a'
 // const OTHER_PAYLOAD = '0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0'
 const PYTH_ATTESTATION_V2_BYTES = 150
+
 // --------------------------------------------------------------------------
 // Utility functions
 // --------------------------------------------------------------------------
 
-async function createVaaProcessorApp (gsexptime, gsindex, gkeys) {
-  const txId = await pclib.createVaaProcessorApp(ownerAddr, gsexptime, gsindex, gkeys.join(''), signCallback)
-  const txResponse = await pclib.waitForTransactionResponse(txId)
-  const appId = pclib.appIdFromCreateAppResponse(txResponse)
-  pclib.setAppId('vaaProcessor', appId)
-  return appId
+function parseVAA (vaa) {
+  const ret = new Map()
+  const buf = Buffer.from(vaa)
+  ret.set('version', buf.readIntBE(0, 1))
+  ret.set('index', buf.readIntBE(1, 4))
+  ret.set('siglen', buf.readIntBE(5, 1))
+  const siglen = ret.get('siglen')
+  if (siglen) {
+    ret.set('signatures', extract3(vaa, 6, siglen * 66))
+  }
+  const sigs = []
+  for (let i = 0; i < siglen; i++) {
+    // TODO:  finish figuring this out.
+    const start = 6 + i * 66
+    const len = 66
+    const sigBuf = extract3(vaa, start, len)
+    sigs.push(sigBuf)
+    // ret["sigs"].append(vaa[(6 + (i * 66)):(6 + (i * 66)) + 66].hex())
+  }
+  ret.set('sigs', sigs)
+  let off = siglen * 66 + 6
+  ret.set('digest', vaa.slice(off)) // This is what is actually signed...
+  ret.set('timestamp', buf.readIntBE(off, 4))
+  off += 4
+  ret.set('nonce', buf.readIntBE(off, 4))
+  off += 4
+  ret.set('chainRaw', extract3(vaa, off, 2))
+  ret.set('chain', buf.readIntBE(off, 2))
+  off += 2
+  ret.set('emitter', extract3(vaa, off, 32))
+  off += 32
+  ret.set('sequence', buf.readBigInt64BE(off))
+  off += 8
+  ret.set('consistency', buf.readIntBE(off, 1))
+  off += 1
+
+  ret.set('Meta', 'Unknown')
+
+  if (
+    Buffer.from(vaa, off, 32) ===
+      Buffer.from(
+        '000000000000000000000000000000000000000000546f6b656e427269646765'
+      )
+  ) {
+    ret.set('Meta', 'TokenBridge')
+    ret.set('module', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('action', buf.readIntBE(off, 1))
+    off += 1
+    if (ret.get('action') === 1) {
+      ret.set('Meta', 'TokenBridge RegisterChain')
+      ret.set('targetChain', buf.readIntBE(off, 2))
+      off += 2
+      ret.set('EmitterChainID', buf.readIntBE(off, 2))
+      off += 2
+      ret.set('targetEmitter', Buffer.from(vaa, off, 32))
+      off += 32
+    } else if (ret.get('action') === 2) {
+      ret.set('Meta', 'TokenBridge UpgradeContract')
+      ret.set('targetChain', buf.readIntBE(off, 2))
+      off += 2
+      ret.set('newContract', Buffer.from(vaa, off, 32))
+      off += 32
+    }
+  }
+
+  if (
+    Buffer.from(vaa, off, 32) ===
+      Buffer.from(
+        '00000000000000000000000000000000000000000000000000000000436f7265'
+      )
+  ) {
+    ret.set('Meta', 'CoreGovernance')
+    ret.set('module', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('action', buf.readIntBE(off, 1))
+    off += 1
+    ret.set('targetChain', buf.readIntBE(off, 2))
+    off += 2
+    ret.set('NewGuardianSetIndex', buf.readIntBE(off, 4))
+  }
+  if (Buffer.from(vaa, off).length === 100 && buf.readIntBE(off, 1) === 2) {
+    ret.set('Meta', 'TokenBridge Attest')
+    ret.set('Type', buf.readIntBE(off, 1))
+    off += 1
+    ret.set('Contract', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('FromChain', buf.readIntBE(off, 2))
+    off += 2
+    ret.set('Decimals', buf.readIntBE(off, 1))
+    off += 1
+    ret.set('Symbol', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('Name', Buffer.from(vaa, off, 32))
+  }
+
+  if (Buffer.from(vaa, off).length === 133 && buf.readIntBE(off, 1) === 1) {
+    ret.set('Meta', 'TokenBridge Transfer')
+    ret.set('Type', buf.readIntBE(off, 1))
+    off += 1
+    ret.set('Amount', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('Contract', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('FromChain', buf.readIntBE(off, 2))
+    off += 2
+    ret.set('ToAddress', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('ToChain', buf.readIntBE(off, 2))
+    off += 2
+    ret.set('Fee', Buffer.from(vaa, off, 32))
+  }
+
+  if (buf.readIntBE(off, 1) === 3) {
+    ret.set('Meta', 'TokenBridge Transfer With Payload')
+    ret.set('Type', buf.readIntBE(off, 1))
+    off += 1
+    ret.set('Amount', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('Contract', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('FromChain', buf.readIntBE(off, 2))
+    off += 2
+    ret.set('ToAddress', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('ToChain', buf.readIntBE(off, 2))
+    off += 2
+    ret.set('Fee', Buffer.from(vaa, off, 32))
+    off += 32
+    ret.set('Payload', Buffer.from(vaa, off))
+  }
+
+  return ret
 }
 
-async function createPricekeeperApp (vaaProcessorAppid) {
-  const txId = await pclib.createPricekeeperApp(ownerAddr, vaaProcessorAppid, signCallback)
+async function createPricecasterApp (vaaProcessorAppid) {
+  const txId = await pclib.createPricecasterApp(ownerAddr, vaaProcessorAppid, signCallback)
   const txResponse = await pclib.waitForTransactionResponse(txId)
   const appId = pclib.appIdFromCreateAppResponse(txResponse)
-  pclib.setAppId('pricekeeper', appId)
+  pclib.setAppId('pricecaster', appId)
   return appId
 }
 
@@ -102,6 +231,22 @@ async function getTxParams () {
   params.flatFee = true
   return params
 }
+
+async function buildTransactionGroup2 (vaa) {
+  const MAX_BITS = 127 * 16 * 8
+  let program = fs.readFileSync('sig.tmpl.teal', 'utf8')
+  const parsedVaa = parseVAA(Buffer.from(vaa.vaa, 'hex'))
+
+  program = program.replace(/TMPL_ADDR_IDX/, (parsedVaa.get('sequence') / BigInt(MAX_BITS)).toString())
+  program = program.replace(/TMPL_EMITTER_ID/, parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex'))
+  program = program.replace(/TMPL_SEED_AMT/, 1002000)
+  program = program.replace(/TMPL_APP_ID/, testConfig.CORE_CONTRACT_ID)
+  program = program.replace(/TMPL_APP_ADDRESS/, algosdk.getApplicationAddress(BigInt(testConfig.CORE_CONTRACT_ID)))
+
+  console.log(program.toString())
+  //await pclib.compileProgram(program)
+}
+
 /**
  * @param {*} numOfVerifySteps Number of verify steps.
  * @param {*} stepSize How many signatures are verified per step.
@@ -192,21 +337,22 @@ async function clearApps () {
 }
 
 function setupPricecasterLib (dumpFailedTx) {
-  const vaaProcessorClearState = 'test/temp/vaa-clear-state.teal'
-  const vaaProcessorApproval = 'test/temp/vaa-processor.teal'
-  const priceKeeperApproval = 'test/temp/pricekeeper-v2.teal'
-  const priceKeeperClearState = 'test/temp/pricekeeper-clear-state.teal'
+  // const vaaProcessorClearState = 'test/temp/vaa-clear-state.teal'
+  // const vaaProcessorApproval = 'test/temp/vaa-processor.teal'
+  const pricecasterApproval = 'test/temp/pricecaster-v2.teal'
+  const pricecasterClearState = 'test/temp/pricecaster-clear-state.teal'
 
-  pclib.setApprovalProgramFile('vaaProcessor', vaaProcessorApproval)
-  pclib.setApprovalProgramFile('pricekeeper', priceKeeperApproval)
-  pclib.setClearStateProgramFile('vaaProcessor', vaaProcessorClearState)
-  pclib.setClearStateProgramFile('pricekeeper', priceKeeperClearState)
+  // pclib.setApprovalProgramFile('vaaProcessor', vaaProcessorApproval)
+  pclib.setApprovalProgramFile('pricecaster', pricecasterApproval)
+  // pclib.setClearStateProgramFile('vaaProcessor', vaaProcessorClearState)
+  pclib.setClearStateProgramFile('pricecaster', pricecasterClearState)
 
   pclib.enableDumpFailedTx(dumpFailedTx)
   pclib.setDumpFailedTxDirectory('./test/temp')
 
-  console.log(spawnSync('python', ['teal/wormhole/pyteal/vaa-processor.py', vaaProcessorApproval, vaaProcessorClearState]).output.toString())
-  console.log(spawnSync('python', ['teal/wormhole/pyteal/pricekeeper-v2.py', priceKeeperApproval, priceKeeperClearState]).output.toString())
+  // console.log(spawnSync('python', ['teal/wormhole/pyteal/vaa-processor.py', vaaProcessorApproval, vaaProcessorClearState]).output.toString())
+  console.log(spawnSync('python', ['teal/pyteal/pricecaster-v2.py', pricecasterApproval, pricecasterClearState]).output.toString())
+  console.log(spawnSync('python', ['wormhole/algorand/tmplSig.py']).output.toString())
 }
 
 function createVAA (guardianSetIndex, guardianPrivKeys, pythChainId, pythEmitterAddress, numAttest) {
@@ -294,7 +440,7 @@ async function checkAttestations (vaa, numOfAttest) {
 //
 // ===============================================================================================================
 
-describe('VAA Processor Smart-contract Tests', function () {
+describe('Pricecaster System Tests', function () {
   before(async function () {
     algodClient = new algosdk.Algodv2(testConfig.ALGORAND_NODE_TOKEN, testConfig.ALGORAND_NODE_HOST, testConfig.ALGORAND_NODE_PORT)
     pclib = new PricecasterLib.PricecasterLib(algodClient)
@@ -314,86 +460,86 @@ describe('VAA Processor Smart-contract Tests', function () {
   }
   )
 
-  it('Must fail to create app with incorrect guardian keys length', async function () {
-    const gsexptime = 2524618800
-    await expect(createVaaProcessorApp(gsexptime, 0, ['BADADDRESS'])).to.be.rejectedWith(/logic eval error/g)
+  // it('Must fail to create app with incorrect guardian keys length', async function () {
+  //   const gsexptime = 2524618800
+  //   await expect(createVaaProcessorApp(gsexptime, 0, ['BADADDRESS'])).to.be.rejectedWith(/logic eval error/g)
+  // })
+
+  // it('Must create VAA Processor app with initial guardians and proper initial state', async function () {
+  //   const gsexptime = 2524618800
+  //   appId = await createVaaProcessorApp(gsexptime, 0, guardianKeys)
+  //   console.log('    - [Created VAA Processor appId: %d]', appId)
+
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
+  //   const gsexp = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gsexp')
+  //   expect(gscount.toString()).to.equal((guardianKeys.length).toString())
+  //   expect(gsexp.toString()).to.equal(gsexptime.toString())
+
+  //   let i = 0
+  //   const buf = Buffer.alloc(8)
+  //   for (const gk of guardianKeys) {
+  //     buf.writeBigUint64BE(BigInt(i++))
+  //     const gkstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, buf.toString())
+  //     expect(Buffer.from(gkstate, 'base64').toString('hex')).to.equal(gk.toLowerCase())
+  //   }
+  // })
+
+  it('Must create pricecaster V2 app with VAA Processor app id set', async function () {
+    pkAppId = await createPricecasterApp(testConfig.CORE_CONTRACT_ID)
+    console.log('    - [Created pricecaster appId: %d]', pkAppId)
+
+    const coreid = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId('pricecaster'), ownerAddr, 'coreid')
+    expect(coreid.toString()).to.equal(testConfig.CORE_CONTRACT_ID)
   })
 
-  it('Must create VAA Processor app with initial guardians and proper initial state', async function () {
-    const gsexptime = 2524618800
-    appId = await createVaaProcessorApp(gsexptime, 0, guardianKeys)
-    console.log('    - [Created VAA Processor appId: %d]', appId)
+  // it('Must set stateless logic hash from owner', async function () {
+  //   const teal = 'test/temp/vaa-verify.teal'
+  //   spawnSync('python', ['teal/wormhole/pyteal/vaa-verify.py', appId, teal])
+  //   const program = fs.readFileSync(teal, 'utf8')
+  //   compiledVerifyProgram = await pclib.compileProgram(program)
+  //   verifyProgramHash = compiledVerifyProgram.hash
+  //   console.log('    - Stateless program: ', verifyProgramHash)
 
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-    const gsexp = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gsexp')
-    expect(gscount.toString()).to.equal((guardianKeys.length).toString())
-    expect(gsexp.toString()).to.equal(gsexptime.toString())
+  //   const txid = await pclib.setVAAVerifyProgramHash(ownerAddr, verifyProgramHash, signCallback)
+  //   await pclib.waitForTransactionResponse(txid)
+  //   const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vphash')
+  //   expect(vphstate).to.equal(verifyProgramHash)
 
-    let i = 0
-    const buf = Buffer.alloc(8)
-    for (const gk of guardianKeys) {
-      buf.writeBigUint64BE(BigInt(i++))
-      const gkstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, buf.toString())
-      expect(Buffer.from(gkstate, 'base64').toString('hex')).to.equal(gk.toLowerCase())
-    }
-  })
+  //   // Feed this account for verification fees.
+  //   const parms = await getTxParams()
+  //   const tx = makePaymentTxnWithSuggestedParams(ownerAddr, verifyProgramHash, 200000, undefined, undefined, parms)
+  //   const signedTx = signCallback(ownerAddr, tx)
+  //   await algodClient.sendRawTransaction(signedTx).do()
+  //   await pclib.waitForTransactionResponse(tx.txID().toString())
+  // })
 
-  it('Must create Pricekeeper V2 app with VAA Processor app id set', async function () {
-    pkAppId = await createPricekeeperApp(pclib.getAppId('vaaProcessor'))
-    console.log('    - [Created pricekeeper appId: %d]', pkAppId)
+  // it('Must set authorized appcall id from owner', async function () {
+  //   const txid = await pclib.setAuthorizedAppId(ownerAddr, pkAppId, signCallback)
+  //   await pclib.waitForTransactionResponse(txid)
+  //   const authid = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'authid')
+  //   expect(authid).to.equal(pkAppId)
+  // })
 
-    const vaapid = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId('pricekeeper'), ownerAddr, 'vaapid')
-    expect(vaapid.toString()).to.equal(pclib.getAppId('vaaProcessor').toString())
-  })
+  // it('Must disallow setting stateless logic hash from non-owner', async function () {
+  //   await expect(pclib.setVAAVerifyProgramHash(otherAddr, verifyProgramHash, signCallback)).to.be.rejectedWith(/logic eval error/g)
+  // })
 
-  it('Must set stateless logic hash from owner', async function () {
-    const teal = 'test/temp/vaa-verify.teal'
-    spawnSync('python', ['teal/wormhole/pyteal/vaa-verify.py', appId, teal])
-    const program = fs.readFileSync(teal, 'utf8')
-    compiledVerifyProgram = await pclib.compileProgram(program)
-    verifyProgramHash = compiledVerifyProgram.hash
-    console.log('    - Stateless program: ', verifyProgramHash)
+  // it('Must reject setting stateless logic hash from group transaction', async function () {
+  //   const appArgs = [new Uint8Array(Buffer.from('setvphash')), new Uint8Array(verifyProgramHash)]
+  //   const params = await getTxParams()
 
-    const txid = await pclib.setVAAVerifyProgramHash(ownerAddr, verifyProgramHash, signCallback)
-    await pclib.waitForTransactionResponse(txid)
-    const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vphash')
-    expect(vphstate).to.equal(verifyProgramHash)
+  //   const gid = pclib.beginTxGroup()
+  //   const appTx = algosdk.makeApplicationNoOpTxn(ownerAddr, params, appId, appArgs)
+  //   const dummyTx = algosdk.makeApplicationNoOpTxn(ownerAddr, params, appId, appArgs)
+  //   pclib.addTxToGroup(gid, appTx)
+  //   pclib.addTxToGroup(gid, dummyTx)
+  //   await expect(pclib.commitTxGroup(gid, ownerAddr, signCallback)).to.be.rejectedWith(/logic eval error/g)
+  // })
 
-    // Feed this account for verification fees.
-    const parms = await getTxParams()
-    const tx = makePaymentTxnWithSuggestedParams(ownerAddr, verifyProgramHash, 200000, undefined, undefined, parms)
-    const signedTx = signCallback(ownerAddr, tx)
-    await algodClient.sendRawTransaction(signedTx).do()
-    await pclib.waitForTransactionResponse(tx.txID().toString())
-  })
-
-  it('Must set authorized appcall id from owner', async function () {
-    const txid = await pclib.setAuthorizedAppId(ownerAddr, pkAppId, signCallback)
-    await pclib.waitForTransactionResponse(txid)
-    const authid = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'authid')
-    expect(authid).to.equal(pkAppId)
-  })
-
-  it('Must disallow setting stateless logic hash from non-owner', async function () {
-    await expect(pclib.setVAAVerifyProgramHash(otherAddr, verifyProgramHash, signCallback)).to.be.rejectedWith(/logic eval error/g)
-  })
-
-  it('Must reject setting stateless logic hash from group transaction', async function () {
-    const appArgs = [new Uint8Array(Buffer.from('setvphash')), new Uint8Array(verifyProgramHash)]
-    const params = await getTxParams()
-
-    const gid = pclib.beginTxGroup()
-    const appTx = algosdk.makeApplicationNoOpTxn(ownerAddr, params, appId, appArgs)
-    const dummyTx = algosdk.makeApplicationNoOpTxn(ownerAddr, params, appId, appArgs)
-    pclib.addTxToGroup(gid, appTx)
-    pclib.addTxToGroup(gid, dummyTx)
-    await expect(pclib.commitTxGroup(gid, ownerAddr, signCallback)).to.be.rejectedWith(/logic eval error/g)
-  })
-
-  it('Must reject setting stateless logic hash with invalid address length', async function () {
-    const appArgs = [new Uint8Array(Buffer.from('setvphash')), new Uint8Array(verifyProgramHash).subarray(0, 10)]
-    await expect(pclib.callApp(ownerAddr, 'vaaProcessor', appArgs, [], signCallback)).to.be.rejectedWith(/logic eval error/g)
-  })
+  // it('Must reject setting stateless logic hash with invalid address length', async function () {
+  //   const appArgs = [new Uint8Array(Buffer.from('setvphash')), new Uint8Array(verifyProgramHash).subarray(0, 10)]
+  //   await expect(pclib.callApp(ownerAddr, 'vaaProcessor', appArgs, [], signCallback)).to.be.rejectedWith(/logic eval error/g)
+  // })
 
   // it('Must reject incorrect transaction group size', async function () {
   //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
@@ -453,87 +599,87 @@ describe('VAA Processor Smart-contract Tests', function () {
 
   // })
 
-  it('Must reject unknown emitter VAA', async function () {
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-    const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
-    const groupSize = Math.ceil(gscount / stepSize)
-    const numOfAttest = 5
-    const vaa = createVAA(1, guardianPrivKeys, 1, OTHER_PYTH_EMITTER, numOfAttest)
-    await expect(buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)).to.be.rejectedWith(/transaction rejected by ApprovalProgram/g)
-  })
+  // it('Must reject unknown emitter VAA', async function () {
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const groupSize = Math.ceil(gscount / stepSize)
+  //   const numOfAttest = 5
+  //   const vaa = createVAA(1, guardianPrivKeys, 1, OTHER_PYTH_EMITTER, numOfAttest)
+  //   await expect(buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)).to.be.rejectedWith(/transaction rejected by ApprovalProgram/g)
+  // })
 
   it('Must verify and handle Pyth V2 VAA - all signers present', async function () {
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-    const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+    const gscount = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAddr, 'gscount')
+    const stepSize = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAddr, 'vssize')
     const groupSize = Math.ceil(gscount / stepSize)
     const numOfAttest = 5
     const vaa = createVAA(1, guardianPrivKeys, 1, PYTH_EMITTER, numOfAttest)
-    const tx = await buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
-    await pclib.waitForConfirmation(tx)
-    await checkAttestations(vaa, numOfAttest)
+    const tx = await buildTransactionGroup2(vaa);//(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
+    //await pclib.waitForConfirmation(tx)
+    //await checkAttestations(vaa, numOfAttest)
   })
 
-  it('Must fail to verify VAA - (shuffle signers)', async function () {
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-    const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
-    const groupSize = Math.ceil(gscount / stepSize)
-    const vaa = createVAA(1, guardianPrivKeys, 1, PYTH_EMITTER, 5)
+  // it('Must fail to verify VAA - (shuffle signers)', async function () {
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const groupSize = Math.ceil(gscount / stepSize)
+  //   const vaa = createVAA(1, guardianPrivKeys, 1, PYTH_EMITTER, 5)
 
-    let shuffleGuardianPrivKeys = [...guardianPrivKeys]
-    shuffleGuardianPrivKeys = testLib.shuffle(shuffleGuardianPrivKeys)
+  //   let shuffleGuardianPrivKeys = [...guardianPrivKeys]
+  //   shuffleGuardianPrivKeys = testLib.shuffle(shuffleGuardianPrivKeys)
 
-    await expect(buildTransactionGroup(groupSize, stepSize, shuffleGuardianPrivKeys, gscount, vaa.signatures, vaa.body)).to.be.rejectedWith(/rejected by logic/g)
-  })
-
-  it('Must verify VAA with signers > 2/3 + 1', async function () {
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-    const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
-
-    // Fixed-point division
-    // https://github.com/certusone/wormhole/blob/00ddd5f02ba34e6570823b23518af8bbd6d91231/ethereum/contracts/Messages.sol#L30
-
-    const quorum = Math.trunc(((gscount * 10 / 3) * 2) / 10 + 1)
-    const slicedGuardianPrivKeys = guardianPrivKeys.slice(0, quorum + 1)
-    const vaa = createVAA(0, slicedGuardianPrivKeys, 1, PYTH_EMITTER, 5)
-    const groupSize = Math.ceil(gscount / stepSize)
-    const tx = await buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
-    await pclib.waitForConfirmation(tx)
-  })
-
-  it('Must fail to verify VAA with <= 2/3 + 1 signers (no quorum)', async function () {
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-    const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
-
-    // Fixed-point division
-    // https://github.com/certusone/wormhole/blob/00ddd5f02ba34e6570823b23518af8bbd6d91231/ethereum/contracts/Messages.sol#L30
-
-    const quorum = Math.trunc(((gscount * 10 / 3) * 2) / 10 + 1)
-    const slicedGuardianPrivKeys = guardianPrivKeys.slice(0, quorum)
-    const vaa = createVAA(0, slicedGuardianPrivKeys, 1, PYTH_EMITTER, 5)
-    const groupSize = Math.ceil(gscount / stepSize)
-    await expect(buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)).to.be.rejectedWith(/rejected by logic/g)
-  })
-  // it('Must verify and handle governance VAA', async function () {
-  //   // TBD
+  //   await expect(buildTransactionGroup(groupSize, stepSize, shuffleGuardianPrivKeys, gscount, vaa.signatures, vaa.body)).to.be.rejectedWith(/rejected by logic/g)
   // })
 
-  it('Must set new emitter VAA', async function () {
-    const txid = await pclib.setPythEmitterAddress(ownerAddr, OTHER_PYTH_EMITTER, signCallback)
-    await pclib.waitForTransactionResponse(txid)
-    const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'emitter', true)
-    expect(vphstate).to.equal(Buffer.from(OTHER_PYTH_EMITTER.replace(/^0x/g, ''), 'hex').toString('base64'))
-  })
+  // it('Must verify VAA with signers > 2/3 + 1', async function () {
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
 
-  it('Must verify and handle Pyth V2 VAA (new emitter)', async function () {
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-    const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
-    const groupSize = Math.ceil(gscount / stepSize)
-    const numOfAttest = 5
-    const vaa = createVAA(1, guardianPrivKeys, 1, OTHER_PYTH_EMITTER, numOfAttest)
-    const tx = await buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
-    await pclib.waitForConfirmation(tx)
-    await checkAttestations(vaa, numOfAttest)
-  })
+  //   // Fixed-point division
+  //   // https://github.com/certusone/wormhole/blob/00ddd5f02ba34e6570823b23518af8bbd6d91231/ethereum/contracts/Messages.sol#L30
+
+  //   const quorum = Math.trunc(((gscount * 10 / 3) * 2) / 10 + 1)
+  //   const slicedGuardianPrivKeys = guardianPrivKeys.slice(0, quorum + 1)
+  //   const vaa = createVAA(0, slicedGuardianPrivKeys,  1, PYTH_EMITTER, 5)
+  //   const groupSize = Math.ceil(gscount / stepSize)
+  //   const tx = await buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
+  //   await pclib.waitForConfirmation(tx)
+  // })
+
+  // it('Must fail to verify VAA with <= 2/3 + 1 signers (no quorum)', async function () {
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+
+  //   // Fixed-point division
+  //   // https://github.com/certusone/wormhole/blob/00ddd5f02ba34e6570823b23518af8bbd6d91231/ethereum/contracts/Messages.sol#L30
+
+  //   const quorum = Math.trunc(((gscount * 10 / 3) * 2) / 10 + 1)
+  //   const slicedGuardianPrivKeys = guardianPrivKeys.slice(0, quorum)
+  //   const vaa = createVAA(0, slicedGuardianPrivKeys, 1, PYTH_EMITTER, 5)
+  //   const groupSize = Math.ceil(gscount / stepSize)
+  //   await expect(buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)).to.be.rejectedWith(/rejected by logic/g)
+  // })
+  // // it('Must verify and handle governance VAA', async function () {
+  // //   // TBD
+  // // })
+
+  // it('Must set new emitter VAA', async function () {
+  //   const txid = await pclib.setPythEmitterAddress(ownerAddr, OTHER_PYTH_EMITTER, signCallback)
+  //   await pclib.waitForTransactionResponse(txid)
+  //   const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'emitter', true)
+  //   expect(vphstate).to.equal(Buffer.from(OTHER_PYTH_EMITTER.replace(/^0x/g, ''), 'hex').toString('base64'))
+  // })
+
+  // it('Must verify and handle Pyth V2 VAA (new emitter)', async function () {
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const groupSize = Math.ceil(gscount / stepSize)
+  //   const numOfAttest = 5
+  //   const vaa = createVAA(1, guardianPrivKeys, 1, OTHER_PYTH_EMITTER, numOfAttest)
+  //   const tx = await buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
+  //   await pclib.waitForConfirmation(tx)
+  //   await checkAttestations(vaa, numOfAttest)
+  // })
 
   // it('Stateless: Must reject transaction with excess fee', async function () {
   //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
