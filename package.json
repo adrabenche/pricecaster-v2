@@ -20,7 +20,7 @@
     "@pythnetwork/client": "^2.3.1",
     "@randlabs/js-config-reader": "^1.1.0",
     "@randlabs/js-logger": "^1.2.0",
-    "algosdk": "^1.12.0",
+    "algosdk": "^1.14.0",
     "base58-universal": "^1.0.0",
     "charm": "^1.0.2",
     "create-react-app": "^5.0.0",
