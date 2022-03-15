@@ -10,7 +10,6 @@ const TestLib = require('./testlib.js')
 const { makePaymentTxnWithSuggestedParams } = require('algosdk')
 const testConfig = require('./test-config')
 const { extract3, arrayChunks } = require('../tools/app-tools')
-const { CORE_CONTRACT_ID } = require('./test-config')
 chai.use(require('chai-as-promised'))
 const testLib = new TestLib.TestLib()
 
@@ -18,8 +17,8 @@ let pclib
 let algodClient
 let verifyProgramHash
 let compiledVerifyProgram
-let ownerAddr, otherAddr
-let pkAppId
+let ownerAccount, otherAccount
+let pkAppId, coreId
 
 const signatures = {}
 
@@ -212,8 +211,37 @@ function parseVAA (vaa) {
   return ret
 }
 
+async function decodeLocalState(appId, address) {
+  let app_state = null
+  const ai = await algodClient.accountInformation(address).do()
+  for (app of ai["apps-local-state"]) {
+    if (app["id"] === parseInt(appId)) {
+      app_state = app["key-value"]
+    }
+  }
+
+  let ret = ''
+  if (app_state) {
+    const e = Buffer.alloc(127)
+    let vals = {}
+    console.log(app_state)
+    for (kv of app_state) {
+      const key = Buffer.from(kv["key"], 'base64').readInt8()
+      const v = Buffer.from(kv["value"]["bytes"], 'base64')
+      if (Buffer.compare(v,e)) {
+        vals[key] = v
+      }
+    }
+    console.log(vals)
+    for (k in vals.keys()) {
+      ret += k
+    }
+  }
+  return ret
+}
+
 async function createPricecasterApp (vaaProcessorAppid) {
-  const txId = await pclib.createPricecasterApp(ownerAddr, vaaProcessorAppid, signCallback)
+  const txId = await pclib.createPricecasterApp(ownerAccount.addr, vaaProcessorAppid, signCallback)
   const txResponse = await pclib.waitForTransactionResponse(txId)
   const appId = pclib.appIdFromCreateAppResponse(txResponse)
   pclib.setAppId('pricecaster', appId)
@@ -227,24 +255,93 @@ function signCallback (sender, tx) {
 
 async function getTxParams () {
   const params = await algodClient.getTransactionParams().do()
-  params.fee = 1000
-  params.flatFee = true
+  // params.fee = 1000
+  // params.flatFee = true
   return params
 }
 
-async function buildTransactionGroup2 (vaa) {
-  const MAX_BITS = 127 * 16 * 8
+async function optin(sender_account, appId, idx, emitter) {
+  // console.log(sender_account, appId, idx, emitter)
+  const appAddr = algosdk.getApplicationAddress(BigInt(appId))
+  const SEED_AMT = 1002000
   let program = fs.readFileSync('sig.tmpl.teal', 'utf8')
+  program = program.replace(/TMPL_ADDR_IDX/, idx)
+  program = program.replace(/TMPL_EMITTER_ID/, '0x' + emitter)
+  program = program.replace(/TMPL_SEED_AMT/, SEED_AMT)
+  program = program.replace(/TMPL_APP_ID/, appId)
+  program = program.replace(/TMPL_APP_ADDRESS/, '0x' + Buffer.from(algosdk.decodeAddress(appAddr).publicKey).toString('hex'))
+  const compiledProgram = await pclib.compileProgram(program)
+  const logicSigAcct = new algosdk.LogicSigAccount(compiledProgram.bytes)
+
+  const params = await getTxParams()
+  const seedTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+    from: sender_account.addr,
+    to: logicSigAcct.address(),
+    amount: SEED_AMT,
+    suggestedParams: params
+  })
+  const optinTxn = algosdk.makeApplicationOptInTxnFromObject({
+    from: logicSigAcct.address(),
+    suggestedParams: params,
+    appIndex: parseInt(appId)
+  })
+  const rekeyTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+    from: logicSigAcct.address(),
+    to: logicSigAcct.address(),
+    amount: 0,
+    suggestedParams: params,
+    rekeyTo: appAddr
+  })
+
+  algosdk.assignGroupID([seedTxn, optinTxn, rekeyTxn])
+
+  console.log(`sender: ${sender_account.addr} lsig: ${logicSigAcct.address()} app_escrow: ${appAddr}}`)
+  const signedSeedTxn = seedTxn.signTxn(sender_account.sk)
+  const signedOptinTxn = algosdk.signLogicSigTransaction(optinTxn, logicSigAcct).blob
+  const signedRekeyTxn = algosdk.signLogicSigTransaction(rekeyTxn, logicSigAcct).blob
+
+  const tx = await algodClient
+    .sendRawTransaction([
+      signedSeedTxn,
+      signedOptinTxn,
+      signedRekeyTxn
+    ])
+    .do()
+
+  return { 
+    txId: tx.txId, 
+    addr: logicSigAcct.address() 
+  }
+}
+
+async function buildTransactionGroup2 (vaa, sender_account) {
+  const MAX_BITS = 127 * 16 * 8
   const parsedVaa = parseVAA(Buffer.from(vaa.vaa, 'hex'))
+ 
+  const optin_seq = await optin(
+    sender_account,
+    coreId,
+    (parsedVaa.get('sequence') / BigInt(MAX_BITS)).toString(),
+    parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex'),
+  )
+  await pclib.waitForConfirmation(optin_seq.txId)
 
-  program = program.replace(/TMPL_ADDR_IDX/, (parsedVaa.get('sequence') / BigInt(MAX_BITS)).toString())
-  program = program.replace(/TMPL_EMITTER_ID/, parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex'))
-  program = program.replace(/TMPL_SEED_AMT/, 1002000)
-  program = program.replace(/TMPL_APP_ID/, testConfig.CORE_CONTRACT_ID)
-  program = program.replace(/TMPL_APP_ADDRESS/, algosdk.getApplicationAddress(BigInt(testConfig.CORE_CONTRACT_ID)))
+  console.log('seq_addr', optin_seq.addr)
 
-  console.log(program.toString())
-  //await pclib.compileProgram(program)
+  const optin_guardian = await optin(
+    sender_account,
+    coreId,
+    parsedVaa.get('index'),
+    parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex')
+  )
+  await pclib.waitForConfirmation(optin_guardian.txId)
+  
+  console.log('guardian_addr', optin_guardian.addr)
+
+  const st = await decodeLocalState(coreId, optin_guardian.addr)
+  console.log(st)
+  
+  return txnId
 }
 
 /**
@@ -287,8 +384,8 @@ async function buildTransactionGroup (numOfVerifySteps, stepSize, guardianKeys, 
     addVerifyCallbackFn(gid, senderAddress, params, vaaBody, keyChunks[i], guardianCount)
   }
 
-  addLastTxCallbackFn(gid, ownerAddr, params, payloadFromVAABody(vaaBody))
-  const tx = await pclib.commitVerifyTxGroup(gid, compiledVerifyProgram.bytes, numOfSigs, sigChunks, ownerAddr, signCallback)
+  addLastTxCallbackFn(gid, ownerAccount.addr, params, payloadFromVAABody(vaaBody))
+  const tx = await pclib.commitVerifyTxGroup(gid, compiledVerifyProgram.bytes, numOfSigs, sigChunks, ownerAccount.addr, signCallback)
   return tx
 }
 
@@ -302,21 +399,19 @@ function payloadFromVAABody (vaaBody) {
 }
 
 async function createTestAccounts () {
-  let acc = algosdk.generateAccount()
-  ownerAddr = acc.addr
-  signatures[ownerAddr] = acc.sk
-  acc = algosdk.generateAccount()
-  otherAddr = acc.addr
-  signatures[otherAddr] = acc.sk
+  ownerAccount = algosdk.mnemonicToSecretKey(testConfig.OWNER_MNEMO)
+  signatures[ownerAccount.addr] = ownerAccount.sk
+  otherAccount = algosdk.generateAccount()
+  signatures[otherAccount.addr] = otherAccount.sk
   signatures[testConfig.SOURCE_ACCOUNT] = algosdk.mnemonicToSecretKey(testConfig.SOURCE_MNEMO).sk
 
   const parms = await getTxParams()
-  const tx = makePaymentTxnWithSuggestedParams(testConfig.SOURCE_ACCOUNT, ownerAddr, 5000000, undefined, undefined, parms)
+  const tx = makePaymentTxnWithSuggestedParams(testConfig.SOURCE_ACCOUNT, ownerAccount.addr, 5000000, undefined, undefined, parms)
   const signedTx = signCallback(testConfig.SOURCE_ACCOUNT, tx)
   await algodClient.sendRawTransaction(signedTx).do()
   await pclib.waitForTransactionResponse(tx.txID().toString())
 
-  const tx2 = makePaymentTxnWithSuggestedParams(testConfig.SOURCE_ACCOUNT, otherAddr, 100000, undefined, undefined, parms)
+  const tx2 = makePaymentTxnWithSuggestedParams(testConfig.SOURCE_ACCOUNT, otherAccount.addr, 100000, undefined, undefined, parms)
   const signedTx2 = signCallback(testConfig.SOURCE_ACCOUNT, tx2)
   await algodClient.sendRawTransaction(signedTx2).do()
   await pclib.waitForTransactionResponse(tx2.txID().toString())
@@ -324,16 +419,27 @@ async function createTestAccounts () {
 
 async function clearApps () {
   console.log('Clearing accounts of all previous apps...')
-  const appsTo = await tools.readCreatedApps(algodClient, ownerAddr)
+  const appsTo = await tools.readCreatedApps(algodClient, ownerAccount.addr)
   for (let i = 0; i < appsTo.length; i++) {
     console.log('Clearing ' + appsTo[i].id)
     try {
-      const txId = await pclib.deleteApp(ownerAddr, signCallback, appsTo[i].id)
+      const txId = await pclib.deleteApp(ownerAccount.addr, signCallback, appsTo[i].id)
       await pclib.waitForConfirmation(txId)
     } catch (e) {
       console.error('Could not delete application! Reason: ' + e)
     }
   }
+}
+
+function setupCore () {
+  console.log('Deploying core...')
+  const output = spawnSync('python', ['wormhole/algorand/admin.py', `--devnet`, `--boot`, `--mnemonic`, testConfig.OWNER_MNEMO]).output.toString()
+  arr = output.split(/\r?\n/)
+  line = arr.filter( (a) => (a.startsWith('coreid')))[0]
+  if (!line) {
+    return 0
+  }
+  return parseInt(line.substring(line.indexOf('=') + 1))
 }
 
 function setupPricecasterLib (dumpFailedTx) {
@@ -382,7 +488,7 @@ function getAttestationKey (payload, index) {
  * @param {*} numOfAttest  Number of attestations to check
  */
 async function checkAttestations (vaa, numOfAttest) {
-  let state = await tools.readAppGlobalState(algodClient, pkAppId, ownerAddr)
+  let state = await tools.readAppGlobalState(algodClient, pkAppId, ownerAccount.addr)
   const payloadAttestations = Buffer.from(payloadFromVAABody(vaa.body), 'hex')
 
   // filter out vappid, sort keys.
@@ -447,15 +553,19 @@ describe('Pricecaster System Tests', function () {
 
     await createTestAccounts()
 
-    console.log('\n  Test accounts: \n    - OWNER: ' + ownerAddr)
-    console.log('    - OTHER: ' + otherAddr)
+    console.log('\n  Test accounts: \n    - OWNER: ' + ownerAccount.addr)
+    console.log('    - OTHER: ' + otherAccount.addr)
     console.log('\n  Funding accounts from ' + testConfig.SOURCE_ACCOUNT)
 
-    const ownerAccInfo = await algodClient.accountInformation(ownerAddr).do()
+    const ownerAccInfo = await algodClient.accountInformation(ownerAccount.addr).do()
     expect(ownerAccInfo.amount).to.be.at.least(algosdk.algosToMicroalgos(5), 'Owner must have enough funding (1 ALGO) to run tests')
 
     await clearApps()
 
+    coreId = setupCore()
+    if (coreId === 0 || coreId === undefined) {
+      throw (new Error('Cannot get proper core app id.'))
+    }
     setupPricecasterLib(testConfig.DUMP_FAILED_TX)
   }
   )
@@ -470,8 +580,8 @@ describe('Pricecaster System Tests', function () {
   //   appId = await createVaaProcessorApp(gsexptime, 0, guardianKeys)
   //   console.log('    - [Created VAA Processor appId: %d]', appId)
 
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const gsexp = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gsexp')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const gsexp = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gsexp')
   //   expect(gscount.toString()).to.equal((guardianKeys.length).toString())
   //   expect(gsexp.toString()).to.equal(gsexptime.toString())
 
@@ -479,17 +589,17 @@ describe('Pricecaster System Tests', function () {
   //   const buf = Buffer.alloc(8)
   //   for (const gk of guardianKeys) {
   //     buf.writeBigUint64BE(BigInt(i++))
-  //     const gkstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, buf.toString())
+  //     const gkstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, buf.toString())
   //     expect(Buffer.from(gkstate, 'base64').toString('hex')).to.equal(gk.toLowerCase())
   //   }
   // })
 
   it('Must create pricecaster V2 app with VAA Processor app id set', async function () {
-    pkAppId = await createPricecasterApp(testConfig.CORE_CONTRACT_ID)
+    pkAppId = await createPricecasterApp(coreId)
     console.log('    - [Created pricecaster appId: %d]', pkAppId)
 
-    const coreid = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId('pricecaster'), ownerAddr, 'coreid')
-    expect(coreid.toString()).to.equal(testConfig.CORE_CONTRACT_ID)
+    const thisCoreId = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId('pricecaster'), ownerAccount.addr, 'coreid')
+    expect(thisCoreId).to.equal(coreId)
   })
 
   // it('Must set stateless logic hash from owner', async function () {
@@ -500,23 +610,23 @@ describe('Pricecaster System Tests', function () {
   //   verifyProgramHash = compiledVerifyProgram.hash
   //   console.log('    - Stateless program: ', verifyProgramHash)
 
-  //   const txid = await pclib.setVAAVerifyProgramHash(ownerAddr, verifyProgramHash, signCallback)
+  //   const txid = await pclib.setVAAVerifyProgramHash(ownerAccount.addr, verifyProgramHash, signCallback)
   //   await pclib.waitForTransactionResponse(txid)
-  //   const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vphash')
+  //   const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vphash')
   //   expect(vphstate).to.equal(verifyProgramHash)
 
   //   // Feed this account for verification fees.
   //   const parms = await getTxParams()
-  //   const tx = makePaymentTxnWithSuggestedParams(ownerAddr, verifyProgramHash, 200000, undefined, undefined, parms)
-  //   const signedTx = signCallback(ownerAddr, tx)
+  //   const tx = makePaymentTxnWithSuggestedParams(ownerAccount.addr, verifyProgramHash, 200000, undefined, undefined, parms)
+  //   const signedTx = signCallback(ownerAccount.addr, tx)
   //   await algodClient.sendRawTransaction(signedTx).do()
   //   await pclib.waitForTransactionResponse(tx.txID().toString())
   // })
 
   // it('Must set authorized appcall id from owner', async function () {
-  //   const txid = await pclib.setAuthorizedAppId(ownerAddr, pkAppId, signCallback)
+  //   const txid = await pclib.setAuthorizedAppId(ownerAccount.addr, pkAppId, signCallback)
   //   await pclib.waitForTransactionResponse(txid)
-  //   const authid = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'authid')
+  //   const authid = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'authid')
   //   expect(authid).to.equal(pkAppId)
   // })
 
@@ -529,21 +639,21 @@ describe('Pricecaster System Tests', function () {
   //   const params = await getTxParams()
 
   //   const gid = pclib.beginTxGroup()
-  //   const appTx = algosdk.makeApplicationNoOpTxn(ownerAddr, params, appId, appArgs)
-  //   const dummyTx = algosdk.makeApplicationNoOpTxn(ownerAddr, params, appId, appArgs)
+  //   const appTx = algosdk.makeApplicationNoOpTxn(ownerAccount.addr, params, appId, appArgs)
+  //   const dummyTx = algosdk.makeApplicationNoOpTxn(ownerAccount.addr, params, appId, appArgs)
   //   pclib.addTxToGroup(gid, appTx)
   //   pclib.addTxToGroup(gid, dummyTx)
-  //   await expect(pclib.commitTxGroup(gid, ownerAddr, signCallback)).to.be.rejectedWith(/logic eval error/g)
+  //   await expect(pclib.commitTxGroup(gid, ownerAccount.addr, signCallback)).to.be.rejectedWith(/logic eval error/g)
   // })
 
   // it('Must reject setting stateless logic hash with invalid address length', async function () {
   //   const appArgs = [new Uint8Array(Buffer.from('setvphash')), new Uint8Array(verifyProgramHash).subarray(0, 10)]
-  //   await expect(pclib.callApp(ownerAddr, 'vaaProcessor', appArgs, [], signCallback)).to.be.rejectedWith(/logic eval error/g)
+  //   await expect(pclib.callApp(ownerAccount.addr, 'vaaProcessor', appArgs, [], signCallback)).to.be.rejectedWith(/logic eval error/g)
   // })
 
   // it('Must reject incorrect transaction group size', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const badSize = 4 + Math.ceil(gscount / vssize)
   //   await expect(execVerify(badSize, vssize, guardianKeys, pythVaaSignatures, pythVaaBody, gscount)).to.be.rejectedWith('Bad Request')
   // })
@@ -562,29 +672,29 @@ describe('Pricecaster System Tests', function () {
   //     return tx.txID()
   //   }
   //   pclib.beginTxGroup()
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / vssize)
   //   await expect(execVerify(groupSize, vssize, guardianKeys, pythVaaSignatures, pythVaaBody, gscount, undefined, undefined, verifyFunc)).to.be.rejectedWith('Bad Request')
   // })
 
   // it('Must reject unknown sender for verify call', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / vssize)
   //   await expect(execVerify(groupSize, vssize, guardianKeys, pythVaaSignatures, pythVaaBody, gscount, undefined, otherAddr)).to.be.rejectedWith('Bad Request')
   // })
 
   // it('Must reject guardian set count argument not matching global state', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / vssize)
   //   await expect(execVerify(groupSize, vssize, guardianKeys, pythVaaSignatures, pythVaaBody, 2)).to.be.rejectedWith('Bad Request')
   // })
 
   // it('Must reject guardian key list argument not matching global state', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / vssize)
   //   const gkBad = guardianKeys.slice(0, guardianKeys.length - 3)
   //   await expect(execVerify(groupSize, vssize, gkBad, pythVaaSignatures, pythVaaBody, 2)).to.be.rejectedWith('Bad Request')
@@ -600,8 +710,8 @@ describe('Pricecaster System Tests', function () {
   // })
 
   // it('Must reject unknown emitter VAA', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / stepSize)
   //   const numOfAttest = 5
   //   const vaa = createVAA(1, guardianPrivKeys, 1, OTHER_PYTH_EMITTER, numOfAttest)
@@ -609,19 +719,19 @@ describe('Pricecaster System Tests', function () {
   // })
 
   it('Must verify and handle Pyth V2 VAA - all signers present', async function () {
-    const gscount = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAddr, 'gscount')
-    const stepSize = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAddr, 'vssize')
-    const groupSize = Math.ceil(gscount / stepSize)
+    // const gscount = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAccount.addr, 'gscount')
+    // const stepSize = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAccount.addr, 'vssize')
+    // const groupSize = Math.ceil(gscount / stepSize)
     const numOfAttest = 5
     const vaa = createVAA(1, guardianPrivKeys, 1, PYTH_EMITTER, numOfAttest)
-    const tx = await buildTransactionGroup2(vaa);//(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
-    //await pclib.waitForConfirmation(tx)
-    //await checkAttestations(vaa, numOfAttest)
+    const tx = await buildTransactionGroup2(vaa, ownerAccount)// (groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
+    await pclib.waitForConfirmation(tx.txId)
+    // await checkAttestations(vaa, numOfAttest)
   })
 
   // it('Must fail to verify VAA - (shuffle signers)', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / stepSize)
   //   const vaa = createVAA(1, guardianPrivKeys, 1, PYTH_EMITTER, 5)
 
@@ -632,8 +742,8 @@ describe('Pricecaster System Tests', function () {
   // })
 
   // it('Must verify VAA with signers > 2/3 + 1', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
 
   //   // Fixed-point division
   //   // https://github.com/certusone/wormhole/blob/00ddd5f02ba34e6570823b23518af8bbd6d91231/ethereum/contracts/Messages.sol#L30
@@ -647,8 +757,8 @@ describe('Pricecaster System Tests', function () {
   // })
 
   // it('Must fail to verify VAA with <= 2/3 + 1 signers (no quorum)', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
 
   //   // Fixed-point division
   //   // https://github.com/certusone/wormhole/blob/00ddd5f02ba34e6570823b23518af8bbd6d91231/ethereum/contracts/Messages.sol#L30
@@ -664,15 +774,15 @@ describe('Pricecaster System Tests', function () {
   // // })
 
   // it('Must set new emitter VAA', async function () {
-  //   const txid = await pclib.setPythEmitterAddress(ownerAddr, OTHER_PYTH_EMITTER, signCallback)
+  //   const txid = await pclib.setPythEmitterAddress(ownerAccount.addr, OTHER_PYTH_EMITTER, signCallback)
   //   await pclib.waitForTransactionResponse(txid)
-  //   const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'emitter', true)
+  //   const vphstate = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'emitter', true)
   //   expect(vphstate).to.equal(Buffer.from(OTHER_PYTH_EMITTER.replace(/^0x/g, ''), 'hex').toString('base64'))
   // })
 
   // it('Must verify and handle Pyth V2 VAA (new emitter)', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const stepSize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / stepSize)
   //   const numOfAttest = 5
   //   const vaa = createVAA(1, guardianPrivKeys, 1, OTHER_PYTH_EMITTER, numOfAttest)
@@ -682,8 +792,8 @@ describe('Pricecaster System Tests', function () {
   // })
 
   // it('Stateless: Must reject transaction with excess fee', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / vssize)
   //   await expect(execVerify(groupSize, vssize, guardianKeys, pythVaaSignatures, pythVaaBody, gscount, 800000)).to.be.rejectedWith('Bad Request')
   // })
@@ -693,8 +803,8 @@ describe('Pricecaster System Tests', function () {
   // })
 
   // it('Stateless: Must reject transaction with mismatching number of signatures', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / vssize)
   //   const pythVaaSignatures2 = pythVaaSignatures.substr(0, pythVaaSignatures.length - 132 - 1)
   //   await expect(execVerify(groupSize, vssize, guardianKeys, pythVaaSignatures2, pythVaaBody, gscount)).to.be.rejectedWith('Bad Request')
@@ -709,8 +819,8 @@ describe('Pricecaster System Tests', function () {
   // })
 
   // it('Stateless: Must reject signature verification failure', async function () {
-  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'gscount')
-  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAddr, 'vssize')
+  //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')
+  //   const vssize = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'vssize')
   //   const groupSize = Math.ceil(gscount / vssize)
   //   let pythVaaSignatures2 = pythVaaSignatures.substr(0, pythVaaSignatures.length - 132 - 1)
   //   pythVaaSignatures2 += '0d525ac1524ec9d9ee623ef535a867e8f86d9b3f8e4c7b4234dbe7bb40dc8494327af2fa37c3db50064d6114f2e1441c4eee444b83636f11ce1f730f7b38490e2800'

@@ -1,5 +1,4 @@
 module.exports = {
-  CORE_CONTRACT_ID: '10',
   // Configurations to use:
   //
   // Algoexplorer Betanet endpoint:
@@ -24,6 +23,10 @@ module.exports = {
   //
   SOURCE_ACCOUNT: 'XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM',
   SOURCE_MNEMO: 'path avocado minor cattle leader thank burger clown cushion village write myself giant antenna betray can diagram pull use exercise truly flash inquiry abandon puppy',
+  //
+  // Owner account.
+  //
+  OWNER_MNEMO: 'assault approve result rare float sugar power float soul kind galaxy edit unusual pretty tone tilt net range pelican avoid unhappy amused recycle abstract master',
   //
   // Set to true to dump failed TX
   //

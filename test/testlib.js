@@ -103,7 +103,7 @@ class TestLib {
 
     const payloadHex = Buffer.from(payload.flat()).toString('hex')
     const body = [
-      web3EthAbi.encodeParameter('uint32', (Date.now() & 0xFFFFFFFF).toString()).substring(2 + (64 - 8)),
+      web3EthAbi.encodeParameter('uint32', (Date.now() & 0xffff).toString()).substring(2 + (64 - 8)),
       web3EthAbi.encodeParameter('uint32', Math.ceil(Math.random() * 999999)).substring(2 + (64 - 8)),
       web3EthAbi.encodeParameter('uint16', pythChainId).substring(2 + (64 - 4)),
       web3EthAbi.encodeParameter('bytes32', pythEmitterAddress).substring(2),
