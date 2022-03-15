@@ -10,6 +10,7 @@ const TestLib = require('./testlib.js')
 const { makePaymentTxnWithSuggestedParams } = require('algosdk')
 const testConfig = require('./test-config')
 const { extract3, arrayChunks } = require('../tools/app-tools')
+const { keccak256 } = require('web3-utils')
 chai.use(require('chai-as-promised'))
 const testLib = new TestLib.TestLib()
 
@@ -224,7 +225,6 @@ async function decodeLocalState(appId, address) {
   if (app_state) {
     const e = Buffer.alloc(127)
     let vals = {}
-    console.log(app_state)
     for (kv of app_state) {
       const key = Buffer.from(kv["key"], 'base64').readInt8()
       const v = Buffer.from(kv["value"]["bytes"], 'base64')
@@ -232,12 +232,22 @@ async function decodeLocalState(appId, address) {
         vals[key] = v
       }
     }
-    console.log(vals)
-    for (k in vals.keys()) {
-      ret += k
+    for (k in Object.keys(vals)) {
+      ret += vals[k]
     }
   }
   return ret
+}
+
+async function isOptedIn(appId, address) {
+  const ai = await algodClient.accountInformation(address).do()
+  for (app of ai["apps-local-state"]) {
+    if (app["id"] === parseInt(appId)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function createPricecasterApp (vaaProcessorAppid) {
@@ -272,75 +282,85 @@ async function optin(sender_account, appId, idx, emitter) {
   program = program.replace(/TMPL_APP_ADDRESS/, '0x' + Buffer.from(algosdk.decodeAddress(appAddr).publicKey).toString('hex'))
   const compiledProgram = await pclib.compileProgram(program)
   const logicSigAcct = new algosdk.LogicSigAccount(compiledProgram.bytes)
+  
+  if (!isOptedIn) {
+    const params = await getTxParams()
+    const seedTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      from: sender_account.addr,
+      to: logicSigAcct.address(),
+      amount: SEED_AMT,
+      suggestedParams: params
+    })
+    const optinTxn = algosdk.makeApplicationOptInTxnFromObject({
+      from: logicSigAcct.address(),
+      suggestedParams: params,
+      appIndex: parseInt(appId)
+    })
+    const rekeyTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      from: logicSigAcct.address(),
+      to: logicSigAcct.address(),
+      amount: 0,
+      suggestedParams: params,
+      rekeyTo: appAddr
+    })
 
-  const params = await getTxParams()
-  const seedTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-    from: sender_account.addr,
-    to: logicSigAcct.address(),
-    amount: SEED_AMT,
-    suggestedParams: params
-  })
-  const optinTxn = algosdk.makeApplicationOptInTxnFromObject({
-    from: logicSigAcct.address(),
-    suggestedParams: params,
-    appIndex: parseInt(appId)
-  })
-  const rekeyTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-    from: logicSigAcct.address(),
-    to: logicSigAcct.address(),
-    amount: 0,
-    suggestedParams: params,
-    rekeyTo: appAddr
-  })
+    algosdk.assignGroupID([seedTxn, optinTxn, rekeyTxn])
 
-  algosdk.assignGroupID([seedTxn, optinTxn, rekeyTxn])
+    console.log(`sender: ${sender_account.addr} lsig: ${logicSigAcct.address()} app_escrow: ${appAddr}}`)
+    const signedSeedTxn = seedTxn.signTxn(sender_account.sk)
+    const signedOptinTxn = algosdk.signLogicSigTransaction(optinTxn, logicSigAcct).blob
+    const signedRekeyTxn = algosdk.signLogicSigTransaction(rekeyTxn, logicSigAcct).blob
 
-  console.log(`sender: ${sender_account.addr} lsig: ${logicSigAcct.address()} app_escrow: ${appAddr}}`)
-  const signedSeedTxn = seedTxn.signTxn(sender_account.sk)
-  const signedOptinTxn = algosdk.signLogicSigTransaction(optinTxn, logicSigAcct).blob
-  const signedRekeyTxn = algosdk.signLogicSigTransaction(rekeyTxn, logicSigAcct).blob
+    const tx = await algodClient
+      .sendRawTransaction([
+        signedSeedTxn,
+        signedOptinTxn,
+        signedRekeyTxn
+      ])
+      .do()
 
-  const tx = await algodClient
-    .sendRawTransaction([
-      signedSeedTxn,
-      signedOptinTxn,
-      signedRekeyTxn
-    ])
-    .do()
-
-  return { 
-    txId: tx.txId, 
-    addr: logicSigAcct.address() 
+    await pclib.waitForConfirmation(tx.txId)
   }
+  return logicSigAcct.address() 
 }
 
 async function buildTransactionGroup2 (vaa, sender_account) {
   const MAX_BITS = 127 * 16 * 8
   const parsedVaa = parseVAA(Buffer.from(vaa.vaa, 'hex'))
  
-  const optin_seq = await optin(
+  const seq_addr = await optin(
     sender_account,
     coreId,
     (parsedVaa.get('sequence') / BigInt(MAX_BITS)).toString(),
     parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex'),
   )
-  await pclib.waitForConfirmation(optin_seq.txId)
 
-  console.log('seq_addr', optin_seq.addr)
+  console.log('seq_addr', seq_addr)
 
-  const optin_guardian = await optin(
+  const guardian_addr = await optin(
     sender_account,
     coreId,
     parsedVaa.get('index'),
-    parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex')
+    Buffer.from('guardian').toString('hex')
   )
-  await pclib.waitForConfirmation(optin_guardian.txId)
   
-  console.log('guardian_addr', optin_guardian.addr)
+  console.log('guardian_addr', guardian_addr)
 
-  const st = await decodeLocalState(coreId, optin_guardian.addr)
-  console.log(st)
+  const keys = await decodeLocalState(coreId, guardian_addr)
   
+  // We process up to 9 signatures in a single TXN
+
+  const bsize = 9*66
+  const blocks = Math.floor( parsedVaa.get('signatures').length() / bsize )  + 1
+  
+  // We don't pass the entire payload in but instead just pass it pre digested. 
+
+  const digest = keccak256(keccak256(parsedVaa.get('digest')))
+  
+  for (let i = 0; i < blocks; ++i) {
+    const sigs = parsedVaa.
+  }
+
   return txnId
 }
 
@@ -434,6 +454,7 @@ async function clearApps () {
 function setupCore () {
   console.log('Deploying core...')
   const output = spawnSync('python', ['wormhole/algorand/admin.py', `--devnet`, `--boot`, `--mnemonic`, testConfig.OWNER_MNEMO]).output.toString()
+  console.log(output)
   arr = output.split(/\r?\n/)
   line = arr.filter( (a) => (a.startsWith('coreid')))[0]
   if (!line) {
@@ -560,7 +581,7 @@ describe('Pricecaster System Tests', function () {
     const ownerAccInfo = await algodClient.accountInformation(ownerAccount.addr).do()
     expect(ownerAccInfo.amount).to.be.at.least(algosdk.algosToMicroalgos(5), 'Owner must have enough funding (1 ALGO) to run tests')
 
-    await clearApps()
+    // await clearApps()
 
     coreId = setupCore()
     if (coreId === 0 || coreId === undefined) {
@@ -723,7 +744,7 @@ describe('Pricecaster System Tests', function () {
     // const stepSize = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAccount.addr, 'vssize')
     // const groupSize = Math.ceil(gscount / stepSize)
     const numOfAttest = 5
-    const vaa = createVAA(1, guardianPrivKeys, 1, PYTH_EMITTER, numOfAttest)
+    const vaa = createVAA(0, guardianPrivKeys, 1, PYTH_EMITTER, numOfAttest)
     const tx = await buildTransactionGroup2(vaa, ownerAccount)// (groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
     await pclib.waitForConfirmation(tx.txId)
     // await checkAttestations(vaa, numOfAttest)
