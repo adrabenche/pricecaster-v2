@@ -18,11 +18,11 @@
  *
  */
 
-const algosdk = require('algosdk')
-const fs = require('fs')
+import algosdk from "algosdk"
 // eslint-disable-next-line camelcase
-const tools = require('../tools/app-tools')
-const crypto = require('crypto')
+import tools from '../tools/app-tools'
+import crypto from 'crypto'
+const fs = require('fs')
 
 const ContractInfo = {
   pricecaster: {
@@ -49,7 +49,15 @@ const ContractInfo = {
 // --------------------------------------------------------------------------------------
 
 class PricecasterLib {
-  constructor (algodClient, ownerAddr = undefined) {
+  private algodClient: algosdk.Algodv2
+  private ownerAddr: string
+  private minFee: number
+  private groupTxSet: {}
+  private lsigs: {}
+  private dumpFailedTx: boolean
+  private dumpFailedTxDirectory: string
+
+  constructor (algodClient: algosdk.Algodv2, ownerAddr = undefined) {
     this.algodClient = algodClient
     this.ownerAddr = ownerAddr
     this.minFee = 1000
@@ -61,14 +69,14 @@ class PricecasterLib {
     /** Set the file dumping feature on failed group transactions
      * @param {boolean} f Set to true to enable function, false to disable.
      */
-    this.enableDumpFailedTx = function (f) {
+    function enableDumpFailedTx(f: boolean) {
       this.dumpFailedTx = f
     }
 
     /** Set the file dumping feature output directory
      * @param {string} dir The output directory.
      */
-    this.setDumpFailedTxDirectory = function (dir) {
+    function setDumpFailedTxDirectory (dir: string) {
       this.dumpFailedTxDirectory = dir
     }
 
@@ -76,7 +84,7 @@ class PricecasterLib {
      * @param {string} contract The contract info to set
      * @param {string} filename New file name to use.
      */
-    this.setApprovalProgramFile = function (contract, filename) {
+    function setApprovalProgramFile (contract: string, filename: string) {
       ContractInfo[contract].approvalProgramFile = filename
     }
 
@@ -84,7 +92,7 @@ class PricecasterLib {
      * @param {string} contract The contract info to set
      * @param {string} filename New file name to use.
      */
-    this.setClearStateProgramFile = function (contract, filename) {
+    function setClearStateProgramFile (contract: string, filename: string) {
       ContractInfo[contract].clearStateProgramFile = filename
     }
 
@@ -93,7 +101,7 @@ class PricecasterLib {
     * @param {*}      bytes Compiled program bytes
     * @param {string} hash  Compiled program hash
     */
-    this.setCompiledApprovalProgram = function (contract, bytes, hash) {
+    function setCompiledApprovalProgram (contract: string, bytes: Uint8Array, hash: string) {
       ContractInfo[contract].compiledApproval.bytes = bytes
       ContractInfo[contract].compiledApproval.hash = hash
     }
@@ -103,7 +111,7 @@ class PricecasterLib {
     * @param {*}      bytes Compiled program bytes
     * @param {string} hash  Compiled program hash
     */
-    this.setCompiledClearStateProgram = function (contract, bytes, hash) {
+    function setCompiledClearStateProgram (contract: string, bytes: Uint8Array, hash: string) {
       ContractInfo[contract].compiledClearState.bytes = bytes
       ContractInfo[contract].compiledClearState.hash = hash
     }
@@ -113,7 +121,7 @@ class PricecasterLib {
      * @param {number} applicationId application id
      * @returns {void}
      */
-    this.setAppId = function (contract, applicationId) {
+    function setAppId (contract: string, applicationId: number) {
       ContractInfo[contract].appId = applicationId
     }
 
@@ -121,7 +129,7 @@ class PricecasterLib {
      * Get the Application id for a specific contract
      * @returns The requested application Id
      */
-    this.getAppId = function (contract) {
+    function getAppId (contract: string) {
       return ContractInfo[contract].appId
     }
 
@@ -129,7 +137,7 @@ class PricecasterLib {
      * Get minimum fee to pay for transactions.
      * @return {Number} minimum transaction fee
      */
-    this.minTransactionFee = function () {
+    function minTransactionFee(): number {
       return this.minFee
     }
 
@@ -139,7 +147,7 @@ class PricecasterLib {
      * @param  {String} accountAddr account to retrieve local state
      * @return {Array} an array containing all the {key: value} pairs of the local state
      */
-    this.readLocalState = function (accountAddr) {
+    async function readLocalState  (accountAddr: string): Promise<any> {
       return tools.readAppLocalState(this.algodClient, this.appId, accountAddr)
     }
 
@@ -149,7 +157,7 @@ class PricecasterLib {
      * @return {Array} an array containing all the {key: value} pairs of the global state
      * @returns {void}
      */
-    this.readGlobalState = function () {
+    async function readGlobalState  (): Promise<any> {
       return tools.readAppGlobalState(this.algodClient, this.appId, this.ownerAddr)
     }
 
@@ -158,7 +166,7 @@ class PricecasterLib {
      * @param  {String} accountAddr account to retrieve local state
      * @returns {void}
      */
-    this.printLocalState = async function (accountAddr) {
+    async function printLocalState (accountAddr: string): Promise<void> {
       await tools.printAppLocalState(this.algodClient, this.appId, accountAddr)
     }
 
@@ -166,7 +174,7 @@ class PricecasterLib {
      * Print application global state on stdout.
      * @returns {void}
      */
-    this.printGlobalState = async function () {
+    async function printGlobalState(): Promise<void> {
       await tools.printAppGlobalState(this.algodClient, this.appId, this.ownerAddr)
     }
 
@@ -178,7 +186,7 @@ class PricecasterLib {
      * @return {String/Number} it returns the value associated to the key that could be an address, a number or a
      * base64 string containing a ByteArray
      */
-    this.readLocalStateByKey = function (accountAddr, key) {
+    async function readLocalStateByKey  (accountAddr: string, key: string): Promise<any> {
       return tools.readAppLocalStateByKey(this.algodClient, this.appId, accountAddr, key)
     }
 
@@ -189,16 +197,16 @@ class PricecasterLib {
      * @return {String/Number} it returns the value associated to the key that could be an address,
      * a number or a base64 string containing a ByteArray
      */
-    this.readGlobalStateByKey = function (key) {
+    async function readGlobalStateByKey  (key: string): Promise<any> {
       return tools.readAppGlobalStateByKey(this.algodClient, this.appId, this.ownerAddr, key)
     }
 
     /**
      * Compile program that programFilename contains.
-     * @param  {String} programFilename filepath to the program to compile
+     * @param {String} programBytes Array of program bytes
      * @return {String} base64 string containing the compiled program
      */
-    this.compileProgram = async function (programBytes) {
+    async function compileProgram(programBytes: Uint8Array): Promise<{ bytes: Uint8Array; hash: any }> {
       const compileResponse = await this.algodClient.compile(programBytes).do()
       const compiledBytes = new Uint8Array(Buffer.from(compileResponse.result, 'base64'))
       return { bytes: compiledBytes, hash: compileResponse.hash }
@@ -207,7 +215,7 @@ class PricecasterLib {
     /**
      * Compile clear state program.
      */
-    this.compileClearProgram = async function (contract) {
+    async function compileClearProgram(contract: string) {
       const program = fs.readFileSync(ContractInfo[contract].clearStateProgramFile, 'utf8')
       ContractInfo[contract].compiledClearState = await this.compileProgram(program)
     }
@@ -215,7 +223,7 @@ class PricecasterLib {
     /**
      * Compile approval program.
      */
-    this.compileApprovalProgram = async function (contract) {
+    async function compileApprovalProgram (contract: string) {
       const program = fs.readFileSync(ContractInfo[contract].approvalProgramFile, 'utf8')
       ContractInfo[contract].compiledApproval = await this.compileProgram(program)
     }
@@ -225,9 +233,11 @@ class PricecasterLib {
      * @param  {Object} txResponse object containig the transactionResponse of the createApp call
      * @return {Number} application id of the created application
      */
-    this.appIdFromCreateAppResponse = function (txResponse) {
+    function appIdFromCreateAppResponse  (txResponse: any): any {
       return txResponse['application-index']
     }
+
+    type SignCallback = (arg0: string, arg1: algosdk.Transaction) => any
 
     /**
      * Create an application based on the default approval and clearState programs or based on the specified files.
@@ -235,7 +245,11 @@ class PricecasterLib {
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
      * @return {String} transaction id of the created application
      */
-    this.createApp = async function (sender, contract, appArgs, signCallback, skipCompile) {
+    async function createApp(sender: string,
+      contract: string,
+      appArgs: Uint8Array[],
+      signCallback: SignCallback,
+      skipCompile?: any): Promise<string> {
       const onComplete = algosdk.OnApplicationComplete.NoOpOC
 
       // get node suggested parameters
@@ -275,8 +289,8 @@ class PricecasterLib {
        * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
        * @return {String} transaction id of the created application
        */
-    this.createPricecasterApp = async function (sender, wormholeCore, signCallback) {
-      return this.createApp(sender, 'pricecaster', [algosdk.encodeUint64(parseInt(wormholeCore))], signCallback)
+    async function createPricecasterApp (sender: string, wormholeCore: number, signCallback: SignCallback): Promise<any> {
+      return this.createApp(sender, 'pricecaster', [algosdk.encodeUint64(wormholeCore)], signCallback)
     }
 
     /**
@@ -288,7 +302,11 @@ class PricecasterLib {
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
      * @return {String} transaction id of the transaction
      */
-    this.callApp = async function (sender, contract, appArgs, appAccounts, signCallback) {
+    async function callApp (sender: string, 
+        contract: string, 
+        appArgs: Uint8Array[], 
+        appAccounts: string[], 
+        signCallback: SignCallback): Promise<any> {
       // get node suggested parameters
       const params = await this.algodClient.getTransactionParams().do()
 
@@ -314,7 +332,7 @@ class PricecasterLib {
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
      * @return {[String]} transaction id of one of the transactions of the group
      */
-    this.clearApp = async function (sender, signCallback, forcedAppId) {
+    async function clearApp(sender: string, signCallback: SignCallback, forcedAppId: number): Promise<string> {
       // get node suggested parameters
       const params = await this.algodClient.getTransactionParams().do()
 
@@ -346,7 +364,7 @@ class PricecasterLib {
       * @param  {Function} applicationId use this application id instead of the one set
       * @return {String}      transaction id of one of the transactions of the group
       */
-    this.deleteApp = async function (sender, signCallback, applicationId) {
+    async function deleteApp (sender: string, signCallback: SignCallback, applicationId: number): Promise<any> {
       // get node suggested parameters
       const params = await this.algodClient.getTransactionParams().do()
 
@@ -375,7 +393,7 @@ class PricecasterLib {
      * @param  {String} txId transaction id to wait for
      * @return {VOID} VOID
      */
-    this.waitForConfirmation = async function (txId) {
+    async function waitForConfirmation(txId: string): Promise<any> {
       const status = (await this.algodClient.status().do())
       let lastRound = status['last-round']
       // eslint-disable-next-line no-constant-condition
@@ -397,7 +415,7 @@ class PricecasterLib {
      * @param  {String} txId transaction id to get transaction response
      * @return {Object}      returns an object containing response information
      */
-    this.waitForTransactionResponse = async function (txId) {
+    async function waitForTransactionResponse(txId: string): Promise<any> {
       // Wait for confirmation
       await this.waitForConfirmation(txId)
 
@@ -425,8 +443,8 @@ class PricecasterLib {
     /**
      * Starts a begin...commit section for commiting grouped transactions.
      */
-    this.beginTxGroup = function () {
-      const gid = crypto.randomBytes(16).toString('hex')
+    function beginTxGroup  () {
+      const gid: string = crypto.randomBytes(16).toString('hex')
       this.groupTxSet[gid] = []
       return gid
     }
@@ -435,7 +453,7 @@ class PricecasterLib {
        * Adds a transaction to the group.
        * @param {} tx Transaction to add.
        */
-    this.addTxToGroup = function (gid, tx) {
+    function addTxToGroup  (gid: string, tx: any) {
       if (this.groupTxSet[gid] === undefined) {
         throw new Error('unknown tx group id')
       }
@@ -447,7 +465,7 @@ class PricecasterLib {
      * @param {function} signCallback The sign callback routine.
      * @returns Transaction id.
      */
-    this.commitTxGroup = async function (gid, sender, signCallback) {
+    async function commitTxGroup(gid: string, sender: string, signCallback: SignCallback) {
       if (this.groupTxSet[gid] === undefined) {
         throw new Error('unknown tx group id')
       }
@@ -474,7 +492,8 @@ class PricecasterLib {
      * @param {*} signCallback The signing callback function to use in the last TX of the group.
      * @returns Transaction id.
      */
-    this.commitVerifyTxGroup = async function (gid, programBytes, totalSignatureCount, sigSubsets, lastTxSender, signCallback) {
+    async function commitVerifyTxGroup(gid: string, programBytes: Uint8Array, totalSignatureCount: number,
+      sigSubsets: any[], lastTxSender: string, signCallback: SignCallback): Promise<string> {
       if (this.groupTxSet[gid] === undefined) {
         throw new Error('unknown group id')
       }
@@ -497,7 +516,7 @@ class PricecasterLib {
       }
 
       // Submit the transaction
-      let tx
+      let tx: any
       try {
         tx = await this.algodClient.sendRawTransaction(signedGroup).do()
       } catch (e) {
@@ -517,55 +536,55 @@ class PricecasterLib {
       return tx.txId
     }
 
-    /**
-     * VAA Processor: Add a verification step to a transaction group.
-     * @param {*} sender The sender account (typically the VAA verification stateless program)
-     * @param {*} payload The VAA payload in hex encoded string.
-     * @param {*} gksubset An hex string containing the keys for the guardian subset in this step.
-     * @param {*} totalguardians The total number of known guardians.
-     */
-    this.addVerifyTx = function (gid, sender, params, payload, gksubset, totalguardians) {
-      if (this.groupTxSet[gid] === undefined) {
-        throw new Error('unknown group id')
-      }
-      const appArgs = []
-      appArgs.push(new Uint8Array(Buffer.from('verify')),
-        new Uint8Array(Buffer.from(gksubset.join(''), 'hex')),
-        algosdk.encodeUint64(parseInt(totalguardians)))
+    // /**
+    //  * VAA Processor: Add a verification step to a transaction group.
+    //  * @param {*} sender The sender account (typically the VAA verification stateless program)
+    //  * @param {*} payload The VAA payload in hex encoded string.
+    //  * @param {*} gksubset An hex string containing the keys for the guardian subset in this step.
+    //  * @param {*} totalguardians The total number of known guardians.
+    //  */
+    // function addVerifyTx  (gid: string, sender: string, params: any, payload: string, gksubset: string[], totalguardians: string): string {
+    //   if (this.groupTxSet[gid] === undefined) {
+    //     throw new Error('unknown group id')
+    //   }
+    //   const appArgs = []
+    //   appArgs.push(new Uint8Array(Buffer.from('verify')),
+    //     new Uint8Array(Buffer.from(gksubset.join(''), 'hex')),
+    //     algosdk.encodeUint64(parseInt(totalguardians)))
 
-      const tx = algosdk.makeApplicationNoOpTxn(sender,
-        params,
-        ContractInfo.wormholeCore.appId,
-        appArgs, undefined, undefined, undefined,
-        new Uint8Array(Buffer.from(payload, 'hex')))
-      this.groupTxSet[gid].push(tx)
+    //   const tx = algosdk.makeApplicationNoOpTxn(sender,
+    //     params,
+    //     ContractInfo.wormholeCore.appId,
+    //     appArgs, undefined, undefined, undefined,
+    //     new Uint8Array(Buffer.from(payload, 'hex')))
+    //   this.groupTxSet[gid].push(tx)
 
-      return tx.txID()
-    }
+    //   return tx.txID()
+    // }
 
-    /**
-     * Pricekeeper-V2: Add store price transaction to TX Group.
-     * @param {*} gid The  TX group identifier generated with BeginGroup call.
-     * @param {*} sender The sender account (typically the VAA verification stateless program)
-     * @param {*} params The network TX parameters.
-     * @param {*} payload The VAA payload, hex-encoded.
-     */
-    this.addPriceStoreTx = function (gid, sender, params, payload) {
-      if (this.groupTxSet[gid] === undefined) {
-        throw new Error('unknown group id')
-      }
-      const appArgs = []
-      appArgs.push(new Uint8Array(Buffer.from('store')),
-        new Uint8Array(Buffer.from(payload, 'hex')))
+    // /**
+    //  * Pricekeeper-V2: Add store price transaction to TX Group.
+    //  * @param {*} gid The  TX group identifier generated with BeginGroup call.
+    //  * @param {*} sender The sender account (typically the VAA verification stateless program)
+    //  * @param {*} params The network TX parameters.
+    //  * @param {*} payload The VAA payload, hex-encoded.
+    //  */
+    // function addPriceStoreTx  (gid, sender, params, payload) {
+    //   if (this.groupTxSet[gid] === undefined) {
+    //     throw new Error('unknown group id')
+    //   }
+    //   const appArgs = []
+    //   appArgs.push(new Uint8Array(Buffer.from('store')),
+    //     new Uint8Array(Buffer.from(payload, 'hex')))
 
-      const tx = algosdk.makeApplicationNoOpTxn(sender,
-        params,
-        ContractInfo.pricekeeper.appId,
-        appArgs)
-      this.groupTxSet[gid].push(tx)
+    //   const tx = algosdk.makeApplicationNoOpTxn(sender,
+    //     params,
+    //     ContractInfo.pricekeeper.appId,
+    //     appArgs)
+    //   this.groupTxSet[gid].push(tx)
 
-      return tx.txID()
-    }
+    //   return tx.txID()
+    // }
   }
 }
 

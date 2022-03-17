@@ -22,8 +22,7 @@
 const web3EthAbi = require('web3-eth-abi')
 const web3Utils = require('web3-utils')
 const elliptic = require('elliptic')
-const crypto = require('crypto')
-class TestLib {
+export default class TestLib {
   /**
       * Create a packed and signed Pyth VAA for testing.
       * This uses the V2 Pyth VAA (batched prices scheme).
@@ -34,11 +33,11 @@ class TestLib {
       * @param {*} pythEmitterAddress The address of Pyth contract.
       * @param {*} numOfAttest The number of attestations to generate in the payload.
       */
-  createSignedPythVAA (guardianSetIndex,
-    signers,
-    pythChainId,
-    pythEmitterAddress,
-    numOfAttest) {
+  createSignedPythVAA (guardianSetIndex: number,
+    signers: [],
+    pythChainId: number,
+    pythEmitterAddress: string,
+    numOfAttest: number) {
     // Payload is:
     //
     // 50325748    P2W_MAGIC (p2wh)
@@ -160,15 +159,15 @@ class TestLib {
       * @param {*} consistencyLevel  The reported consistency level
       * @param {*} payload This VAA Payload hex string, prefixed with 0x
       */
-  createSignedVAA (guardianSetIndex,
-    signers,
-    timestamp,
-    nonce,
-    emitterChainId,
-    emitterAddress,
-    sequence,
-    consistencyLevel,
-    payload) {
+  createSignedVAA (guardianSetIndex: number,
+    signers: [],
+    timestamp: number,
+    nonce: number,
+    emitterChainId: number,
+    emitterAddress: string,
+    sequence: number,
+    consistencyLevel: number,
+    payload: string) {
     const body = [
       web3EthAbi.encodeParameter('uint32', timestamp).substring(2 + (64 - 8)),
       web3EthAbi.encodeParameter('uint32', nonce).substring(2 + (64 - 8)),
@@ -213,14 +212,14 @@ class TestLib {
     return vm
   }
 
-  zeroPadBytes (value, length) {
+  zeroPadBytes (value, length: number) {
     while (value.length < 2 * length) {
       value = '0' + value
     }
     return value
   }
 
-  shuffle (array) {
+  shuffle (array: []) {
     let currentIndex = array.length; let randomIndex
 
     // While there remain elements to shuffle...
@@ -237,13 +236,9 @@ class TestLib {
     return array
   }
 
-  hexToBytes (hex) {
+  hexToBytes (hex: string) {
     // eslint-disable-next-line no-var
     for (var bytes = [], c = 0; c < hex.length; c += 2) { bytes.push(parseInt(hex.substr(c, 2), 16)) }
     return bytes
   }
-}
-
-module.exports = {
-  TestLib
 }

@@ -4,7 +4,7 @@
 
 The Pricecaster II Program
 
-v3.0
+v3.1
 
 (c) 2022 Wormhole Project Contributors
 
@@ -12,6 +12,7 @@ v3.0
 v1.0 - first version
 v2.0 - stores Pyth Payload
 v3.0 - supports Pyth V2 "batched" price Payloads.
+v3.1 - fixes to integrate with Wormhole Core Contract work.
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the verification transaction group, and the verification condition
@@ -57,7 +58,7 @@ PYTH_PAYLOAD = Txn.application_args[1]
 SLOTID_VERIFIED_BIT = 254
 SLOT_VERIFIED_BITFIELD = ScratchVar(TealType.uint64, SLOTID_VERIFIED_BIT)
 SLOT_TEMP = ScratchVar(TealType.uint64)
-VAA_PROCESSOR_APPID = App.globalGet(Bytes("vaapid"))
+VAA_PROCESSOR_APPID = App.globalGet(Bytes("coreid"))
 PYTH_ATTESTATION_V2_BYTES = 150
 
 
@@ -70,7 +71,7 @@ def is_creator():
 # Arg0: Bootstrap with the authorized VAA Processor appid.
 def bootstrap():
     return Seq([
-        App.globalPut(Bytes("vaapid"), Btoi(Txn.application_args[0])),
+        App.globalPut(Bytes("coreid"), Btoi(Txn.application_args[0])),
         Approve()
     ])
 

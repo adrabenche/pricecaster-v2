@@ -1,3 +1,4 @@
+
 /*************************************************************************
  * Copyright 2022 Wormhole Project Contributors
  *
@@ -13,12 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const sha512 = require('js-sha512')
-const hibase32 = require('hi-base32')
+import { Algodv2 } from "algosdk"
+import sha512 from 'js-sha512'
+import hibase32 from 'hi-base32'
 
 const ALGORAND_ADDRESS_SIZE = 58
 
-function timeoutPromise (ms, promise) {
+function timeoutPromise (ms: number, promise: Promise<any>) {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
       reject(new Error('promise timeout'))
@@ -36,7 +38,7 @@ function timeoutPromise (ms, promise) {
   })
 }
 
-function getInt64Bytes (x, len) {
+function getInt64Bytes (x: number, len: number) {
   if (!len) {
     len = 8
   }
@@ -51,7 +53,7 @@ function getInt64Bytes (x, len) {
   return bytes
 }
 
-function addressFromByteBuffer (addr) {
+function addressFromByteBuffer (addr: string) {
   const bytes = Buffer.from(addr, 'base64')
 
   // compute checksum
@@ -66,7 +68,7 @@ function addressFromByteBuffer (addr) {
   return v.toString().slice(0, ALGORAND_ADDRESS_SIZE)
 }
 
-function printAppCallDeltaArray (deltaArray) {
+function printAppCallDeltaArray (deltaArray: any[]) {
   for (let i = 0; i < deltaArray.length; i++) {
     if (deltaArray[i].address) {
       console.log('Local state change address: ' + deltaArray[i].address)
@@ -80,13 +82,13 @@ function printAppCallDeltaArray (deltaArray) {
   }
 }
 
-function printAppStateArray (stateArray) {
+function printAppStateArray (stateArray: any[]): void {
   for (let n = 0; n < stateArray.length; n++) {
     printAppState(stateArray[n])
   }
 }
 
-function appValueState (stateValue, disableParseAddress) {
+function appValueState (stateValue: any, disableParseAddress: boolean = false) {
   let text = ''
 
   if (stateValue.type === 1 && !disableParseAddress) {
@@ -105,7 +107,7 @@ function appValueState (stateValue, disableParseAddress) {
   return text
 }
 
-function appValueStateString (stateValue) {
+function appValueStateString (stateValue: any) {
   let text = ''
 
   if (stateValue.type === 1) {
@@ -124,7 +126,7 @@ function appValueStateString (stateValue) {
   return text
 }
 
-function printAppState (state) {
+function printAppState (state: any) {
   let text = Buffer.from(state.key, 'base64').toString() + ': '
 
   text += appValueStateString(state.value)
@@ -132,7 +134,7 @@ function printAppState (state) {
   console.log(text)
 }
 
-async function printAppLocalState (algodClient, appId, accountAddr) {
+async function printAppLocalState (algodClient:Algodv2, appId: number, accountAddr: string) {
   const ret = await readAppLocalState(algodClient, appId, accountAddr)
   if (ret) {
     console.log('Application %d local state for account %s:', appId, accountAddr)
@@ -140,7 +142,7 @@ async function printAppLocalState (algodClient, appId, accountAddr) {
   }
 }
 
-async function printAppGlobalState (algodClient, appId, accountAddr) {
+async function printAppGlobalState (algodClient: Algodv2, appId: number, accountAddr: string) {
   const ret = await readAppGlobalState(algodClient, appId, accountAddr)
   if (ret) {
     console.log('Application %d global state:', appId)
@@ -148,18 +150,18 @@ async function printAppGlobalState (algodClient, appId, accountAddr) {
   }
 }
 
-async function readCreatedApps (algodClient, accountAddr) {
+async function readCreatedApps (algodClient: Algodv2, accountAddr: string) {
   const accountInfoResponse = await algodClient.accountInformation(accountAddr).do()
   return accountInfoResponse['created-apps']
 }
 
-async function readOptedInApps (algodClient, accountAddr) {
+async function readOptedInApps (algodClient: Algodv2, accountAddr: string) {
   const accountInfoResponse = await algodClient.accountInformation(accountAddr).do()
   return accountInfoResponse['apps-local-state']
 }
 
 // read global state of application
-async function readAppGlobalState (algodClient, appId, accountAddr) {
+async function readAppGlobalState (algodClient: Algodv2, appId: number, accountAddr: string) {
   const accountInfoResponse = await algodClient.accountInformation(accountAddr).do()
   for (let i = 0; i < accountInfoResponse['created-apps'].length; i++) {
     if (accountInfoResponse['created-apps'][i].id === appId) {
@@ -170,7 +172,7 @@ async function readAppGlobalState (algodClient, appId, accountAddr) {
   }
 }
 
-async function readAppGlobalStateByKey (algodClient, appId, accountAddr, key, disableParseAddress) {
+async function readAppGlobalStateByKey (algodClient: Algodv2, appId: number, accountAddr: string, key: string, disableParseAddress?: boolean) {
   const accountInfoResponse = await algodClient.accountInformation(accountAddr).do()
   for (let i = 0; i < accountInfoResponse['created-apps'].length; i++) {
     if (accountInfoResponse['created-apps'][i].id === appId) {
@@ -188,12 +190,10 @@ async function readAppGlobalStateByKey (algodClient, appId, accountAddr, key, di
 }
 
 // read local state of application from user account
-async function readAppLocalState (algodClient, appId, accountAddr) {
+async function readAppLocalState (algodClient: Algodv2, appId: number, accountAddr: string) {
   const accountInfoResponse = await algodClient.accountInformation(accountAddr).do()
   for (let i = 0; i < accountInfoResponse['apps-local-state'].length; i++) {
     if (accountInfoResponse['apps-local-state'][i].id === appId) {
-      // console.log(accountAddr + " opted in, local state:")
-
       if (accountInfoResponse['apps-local-state'][i]['key-value']) {
         return accountInfoResponse['apps-local-state'][i]['key-value']
       }
@@ -201,7 +201,7 @@ async function readAppLocalState (algodClient, appId, accountAddr) {
   }
 }
 
-async function readAppLocalStateByKey (algodClient, appId, accountAddr, key) {
+async function readAppLocalStateByKey (algodClient: Algodv2, appId: number, accountAddr: string, key: string) {
   const accountInfoResponse = await algodClient.accountInformation(accountAddr).do()
   for (let i = 0; i < accountInfoResponse['apps-local-state'].length; i++) {
     if (accountInfoResponse['apps-local-state'][i].id === appId) {
@@ -223,8 +223,8 @@ async function readAppLocalStateByKey (algodClient, appId, accountAddr, key) {
   }
 }
 
-function uintArray8ToString (byteArray) {
-  return Array.from(byteArray, function (byte) {
+function uintArray8ToString (byteArray: Uint8Array): string {
+  return Array.from(byteArray, function (byte: number) {
     // eslint-disable-next-line no-bitwise
     return ('0' + (byte & 0xFF).toString(16)).slice(-2)
   }).join('')
@@ -236,7 +236,7 @@ function uintArray8ToString (byteArray) {
  * @return {Boolean} returns true if there is a local or global delta meanining that
  * the transaction made a change in the local or global state
  */
-function anyAppCallDelta (transactionResponse) {
+function anyAppCallDelta (transactionResponse: any): any {
   return (transactionResponse['global-state-delta'] || transactionResponse['local-state-delta'])
 }
 
@@ -245,7 +245,7 @@ function anyAppCallDelta (transactionResponse) {
  * @param  {Object} transactionResponse object containing the transaction response of an application call
  * @return {void}
  */
-function printAppCallDelta (transactionResponse) {
+function printAppCallDelta (transactionResponse: any) {
   if (transactionResponse['global-state-delta'] !== undefined) {
     console.log('Global State updated:')
     printAppCallDeltaArray(transactionResponse['global-state-delta'])
@@ -262,7 +262,7 @@ function printAppCallDelta (transactionResponse) {
  * @param {*} size The size of the byte slice to extract.
  * @returns A buffer with extracted bytes.
  */
-function extract3 (buffer, start, size) {
+function extract3 (buffer: Buffer, start: number, size: number):  Buffer{
   return buffer.slice(start, start + size)
 }
 
@@ -272,9 +272,9 @@ function extract3 (buffer, start, size) {
  * @param {*} chunkSize The desired chunk size
  * @returns A collection of arrays containing chunks of the original array
  */
-function arrayChunks (array, chunkSize) {
+function arrayChunks<T> (array: Array<T>, chunkSize: number): Array<T>[] {
   return Array(Math.ceil(array.length / chunkSize))
-    .fill().map((_, index) => index * chunkSize)
+    .fill(undefined).map((_, index) => index * chunkSize)
     .map(begin => array.slice(begin, begin + chunkSize))
 }
 
@@ -284,11 +284,11 @@ function arrayChunks (array, chunkSize) {
  * @param {*} numOfChunks The number of desired chunks
  * @returns A collection of arrays containing chunks of the original array
  */
-function arrayChunks2 (array, numOfChunks) {
+function arrayChunks2<T> (array: Array<T>, numOfChunks: number): Array<T>[] {
   return arrayChunks(array, Math.ceil(array.length / numOfChunks))
 }
 
-module.exports = {
+export default {
   arrayChunks,
   arrayChunks2,
   extract3,

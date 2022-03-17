@@ -1,7 +1,6 @@
 /* eslint-disable no-unused-expressions */
 const PricecasterLib = require('../lib/pricecaster')
 const tools = require('../tools/app-tools')
-const algosdk = require('algosdk')
 const { expect } = require('chai')
 const chai = require('chai')
 const spawnSync = require('child_process').spawnSync
@@ -13,15 +12,17 @@ const { extract3, arrayChunks } = require('../tools/app-tools')
 const { keccak256 } = require('web3-utils')
 chai.use(require('chai-as-promised'))
 const testLib = new TestLib.TestLib()
+import algosdk, { Transaction } from 'algosdk'
+//import WormholeAlgoSdk from 'wormhole/sdk/js/src/token_bridge/Algorand'
 
-let pclib
-let algodClient
-let verifyProgramHash
-let compiledVerifyProgram
-let ownerAccount, otherAccount
-let pkAppId, coreId
+let pclib: any
+let algodClient: algosdk.Algodv2  
+let verifyProgramHash: string
+let compiledVerifyProgram: string
+let ownerAccount: algosdk.Account, otherAccount: algosdk.Account
+let pkAppId: number, coreId: number
 
-const signatures = {}
+const signatures: Record<string,any> = {}
 
 const guardianKeys = [
   '52A26Ce40F8CAa8D36155d37ef0D5D783fc614d2',
@@ -77,344 +78,345 @@ const PYTH_ATTESTATION_V2_BYTES = 150
 // Utility functions
 // --------------------------------------------------------------------------
 
-function parseVAA (vaa) {
-  const ret = new Map()
-  const buf = Buffer.from(vaa)
-  ret.set('version', buf.readIntBE(0, 1))
-  ret.set('index', buf.readIntBE(1, 4))
-  ret.set('siglen', buf.readIntBE(5, 1))
-  const siglen = ret.get('siglen')
-  if (siglen) {
-    ret.set('signatures', extract3(vaa, 6, siglen * 66))
-  }
-  const sigs = []
-  for (let i = 0; i < siglen; i++) {
-    // TODO:  finish figuring this out.
-    const start = 6 + i * 66
-    const len = 66
-    const sigBuf = extract3(vaa, start, len)
-    sigs.push(sigBuf)
-    // ret["sigs"].append(vaa[(6 + (i * 66)):(6 + (i * 66)) + 66].hex())
-  }
-  ret.set('sigs', sigs)
-  let off = siglen * 66 + 6
-  ret.set('digest', vaa.slice(off)) // This is what is actually signed...
-  ret.set('timestamp', buf.readIntBE(off, 4))
-  off += 4
-  ret.set('nonce', buf.readIntBE(off, 4))
-  off += 4
-  ret.set('chainRaw', extract3(vaa, off, 2))
-  ret.set('chain', buf.readIntBE(off, 2))
-  off += 2
-  ret.set('emitter', extract3(vaa, off, 32))
-  off += 32
-  ret.set('sequence', buf.readBigInt64BE(off))
-  off += 8
-  ret.set('consistency', buf.readIntBE(off, 1))
-  off += 1
+// function parseVAA (vaa) {
+//   const ret = new Map()
+//   const buf = Buffer.from(vaa)
+//   ret.set('version', buf.readIntBE(0, 1))
+//   ret.set('index', buf.readIntBE(1, 4))
+//   ret.set('siglen', buf.readIntBE(5, 1))
+//   const siglen = ret.get('siglen')
+//   if (siglen) {
+//     ret.set('signatures', extract3(vaa, 6, siglen * 66))
+//   }
+//   const sigs = []
+//   for (let i = 0; i < siglen; i++) {
+//     // TODO:  finish figuring this out.
+//     const start = 6 + i * 66
+//     const len = 66
+//     const sigBuf = extract3(vaa, start, len)
+//     sigs.push(sigBuf)
+//     // ret["sigs"].append(vaa[(6 + (i * 66)):(6 + (i * 66)) + 66].hex())
+//   }
+//   ret.set('sigs', sigs)
+//   let off = siglen * 66 + 6
+//   ret.set('digest', vaa.slice(off)) // This is what is actually signed...
+//   ret.set('timestamp', buf.readIntBE(off, 4))
+//   off += 4
+//   ret.set('nonce', buf.readIntBE(off, 4))
+//   off += 4
+//   ret.set('chainRaw', extract3(vaa, off, 2))
+//   ret.set('chain', buf.readIntBE(off, 2))
+//   off += 2
+//   ret.set('emitter', extract3(vaa, off, 32))
+//   off += 32
+//   ret.set('sequence', buf.readBigInt64BE(off))
+//   off += 8
+//   ret.set('consistency', buf.readIntBE(off, 1))
+//   off += 1
 
-  ret.set('Meta', 'Unknown')
+//   ret.set('Meta', 'Unknown')
 
-  if (
-    Buffer.from(vaa, off, 32) ===
-      Buffer.from(
-        '000000000000000000000000000000000000000000546f6b656e427269646765'
-      )
-  ) {
-    ret.set('Meta', 'TokenBridge')
-    ret.set('module', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('action', buf.readIntBE(off, 1))
-    off += 1
-    if (ret.get('action') === 1) {
-      ret.set('Meta', 'TokenBridge RegisterChain')
-      ret.set('targetChain', buf.readIntBE(off, 2))
-      off += 2
-      ret.set('EmitterChainID', buf.readIntBE(off, 2))
-      off += 2
-      ret.set('targetEmitter', Buffer.from(vaa, off, 32))
-      off += 32
-    } else if (ret.get('action') === 2) {
-      ret.set('Meta', 'TokenBridge UpgradeContract')
-      ret.set('targetChain', buf.readIntBE(off, 2))
-      off += 2
-      ret.set('newContract', Buffer.from(vaa, off, 32))
-      off += 32
-    }
-  }
+//   if (
+//     Buffer.from(vaa, off, 32) ===
+//       Buffer.from(
+//         '000000000000000000000000000000000000000000546f6b656e427269646765'
+//       )
+//   ) {
+//     ret.set('Meta', 'TokenBridge')
+//     ret.set('module', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('action', buf.readIntBE(off, 1))
+//     off += 1
+//     if (ret.get('action') === 1) {
+//       ret.set('Meta', 'TokenBridge RegisterChain')
+//       ret.set('targetChain', buf.readIntBE(off, 2))
+//       off += 2
+//       ret.set('EmitterChainID', buf.readIntBE(off, 2))
+//       off += 2
+//       ret.set('targetEmitter', Buffer.from(vaa, off, 32))
+//       off += 32
+//     } else if (ret.get('action') === 2) {
+//       ret.set('Meta', 'TokenBridge UpgradeContract')
+//       ret.set('targetChain', buf.readIntBE(off, 2))
+//       off += 2
+//       ret.set('newContract', Buffer.from(vaa, off, 32))
+//       off += 32
+//     }
+//   }
 
-  if (
-    Buffer.from(vaa, off, 32) ===
-      Buffer.from(
-        '00000000000000000000000000000000000000000000000000000000436f7265'
-      )
-  ) {
-    ret.set('Meta', 'CoreGovernance')
-    ret.set('module', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('action', buf.readIntBE(off, 1))
-    off += 1
-    ret.set('targetChain', buf.readIntBE(off, 2))
-    off += 2
-    ret.set('NewGuardianSetIndex', buf.readIntBE(off, 4))
-  }
-  if (Buffer.from(vaa, off).length === 100 && buf.readIntBE(off, 1) === 2) {
-    ret.set('Meta', 'TokenBridge Attest')
-    ret.set('Type', buf.readIntBE(off, 1))
-    off += 1
-    ret.set('Contract', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('FromChain', buf.readIntBE(off, 2))
-    off += 2
-    ret.set('Decimals', buf.readIntBE(off, 1))
-    off += 1
-    ret.set('Symbol', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('Name', Buffer.from(vaa, off, 32))
-  }
+//   if (
+//     Buffer.from(vaa, off, 32) ===
+//       Buffer.from(
+//         '00000000000000000000000000000000000000000000000000000000436f7265'
+//       )
+//   ) {
+//     ret.set('Meta', 'CoreGovernance')
+//     ret.set('module', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('action', buf.readIntBE(off, 1))
+//     off += 1
+//     ret.set('targetChain', buf.readIntBE(off, 2))
+//     off += 2
+//     ret.set('NewGuardianSetIndex', buf.readIntBE(off, 4))
+//   }
+//   if (Buffer.from(vaa, off).length === 100 && buf.readIntBE(off, 1) === 2) {
+//     ret.set('Meta', 'TokenBridge Attest')
+//     ret.set('Type', buf.readIntBE(off, 1))
+//     off += 1
+//     ret.set('Contract', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('FromChain', buf.readIntBE(off, 2))
+//     off += 2
+//     ret.set('Decimals', buf.readIntBE(off, 1))
+//     off += 1
+//     ret.set('Symbol', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('Name', Buffer.from(vaa, off, 32))
+//   }
 
-  if (Buffer.from(vaa, off).length === 133 && buf.readIntBE(off, 1) === 1) {
-    ret.set('Meta', 'TokenBridge Transfer')
-    ret.set('Type', buf.readIntBE(off, 1))
-    off += 1
-    ret.set('Amount', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('Contract', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('FromChain', buf.readIntBE(off, 2))
-    off += 2
-    ret.set('ToAddress', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('ToChain', buf.readIntBE(off, 2))
-    off += 2
-    ret.set('Fee', Buffer.from(vaa, off, 32))
-  }
+//   if (Buffer.from(vaa, off).length === 133 && buf.readIntBE(off, 1) === 1) {
+//     ret.set('Meta', 'TokenBridge Transfer')
+//     ret.set('Type', buf.readIntBE(off, 1))
+//     off += 1
+//     ret.set('Amount', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('Contract', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('FromChain', buf.readIntBE(off, 2))
+//     off += 2
+//     ret.set('ToAddress', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('ToChain', buf.readIntBE(off, 2))
+//     off += 2
+//     ret.set('Fee', Buffer.from(vaa, off, 32))
+//   }
 
-  if (buf.readIntBE(off, 1) === 3) {
-    ret.set('Meta', 'TokenBridge Transfer With Payload')
-    ret.set('Type', buf.readIntBE(off, 1))
-    off += 1
-    ret.set('Amount', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('Contract', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('FromChain', buf.readIntBE(off, 2))
-    off += 2
-    ret.set('ToAddress', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('ToChain', buf.readIntBE(off, 2))
-    off += 2
-    ret.set('Fee', Buffer.from(vaa, off, 32))
-    off += 32
-    ret.set('Payload', Buffer.from(vaa, off))
-  }
+//   if (buf.readIntBE(off, 1) === 3) {
+//     ret.set('Meta', 'TokenBridge Transfer With Payload')
+//     ret.set('Type', buf.readIntBE(off, 1))
+//     off += 1
+//     ret.set('Amount', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('Contract', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('FromChain', buf.readIntBE(off, 2))
+//     off += 2
+//     ret.set('ToAddress', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('ToChain', buf.readIntBE(off, 2))
+//     off += 2
+//     ret.set('Fee', Buffer.from(vaa, off, 32))
+//     off += 32
+//     ret.set('Payload', Buffer.from(vaa, off))
+//   }
 
-  return ret
-}
+//   return ret
+// }
 
-async function decodeLocalState(appId, address) {
-  let app_state = null
-  const ai = await algodClient.accountInformation(address).do()
-  for (app of ai["apps-local-state"]) {
-    if (app["id"] === parseInt(appId)) {
-      app_state = app["key-value"]
-    }
-  }
+// async function decodeLocalState(appId: number, address: string) {
+//   let app_state = null
+//   const ai = await algodClient.accountInformation(address).do()
+//   for (const app of ai["apps-local-state"]) {
+//     if (app["id"] === appId) {
+//       app_state = app["key-value"]
+//     }
+//   }
 
-  let ret = ''
-  if (app_state) {
-    const e = Buffer.alloc(127)
-    let vals = {}
-    for (kv of app_state) {
-      const key = Buffer.from(kv["key"], 'base64').readInt8()
-      const v = Buffer.from(kv["value"]["bytes"], 'base64')
-      if (Buffer.compare(v,e)) {
-        vals[key] = v
-      }
-    }
-    for (k in Object.keys(vals)) {
-      ret += vals[k]
-    }
-  }
-  return ret
-}
+//   let ret = ''
+//   if (app_state) {
+//     const e = Buffer.alloc(127)
+//     let vals = {}
+//     for (const kv of app_state) {
+//       const key = Buffer.from(kv["key"], 'base64').readInt8()
+//       const v = Buffer.from(kv["value"]["bytes"], 'base64')
+//       if (Buffer.compare(v,e)) {
+//         vals[key] = v
+//       }
+//     }
+//     for (const k in Object.keys(vals)) {
+//       ret += vals[k]
+//     }
+//   }
+//   return ret
+// }
 
-async function isOptedIn(appId, address) {
-  const ai = await algodClient.accountInformation(address).do()
-  for (app of ai["apps-local-state"]) {
-    if (app["id"] === parseInt(appId)) {
-      return true;
-    }
-  }
+// async function isOptedIn(appId: string, address: string) {
+//   const ai = await algodClient.accountInformation(address).do()
+//   for (const app of ai["apps-local-state"]) {
+//     if (app["id"] === parseInt(appId)) {
+//       return true;
+//     }
+//   }
 
-  return false;
-}
+//   return false;
+// }
 
-async function createPricecasterApp (vaaProcessorAppid) {
-  const txId = await pclib.createPricecasterApp(ownerAccount.addr, vaaProcessorAppid, signCallback)
-  const txResponse = await pclib.waitForTransactionResponse(txId)
-  const appId = pclib.appIdFromCreateAppResponse(txResponse)
-  pclib.setAppId('pricecaster', appId)
-  return appId
-}
+// async function createPricecasterApp (vaaProcessorAppid) {
+//   const txId = await pclib.createPricecasterApp(ownerAccount.addr, vaaProcessorAppid, signCallback)
+//   const txResponse = await pclib.waitForTransactionResponse(txId)
+//   const appId = pclib.appIdFromCreateAppResponse(txResponse)
+//   pclib.setAppId('pricecaster', appId)
+//   return appId
+// }
 
-function signCallback (sender, tx) {
-  const txSigned = tx.signTxn(signatures[sender])
-  return txSigned
+function signCallback (sender: string, tx: Transaction) {
+  return tx.signTxn(signatures[sender])
 }
 
 async function getTxParams () {
   const params = await algodClient.getTransactionParams().do()
-  // params.fee = 1000
-  // params.flatFee = true
   return params
 }
 
-async function optin(sender_account, appId, idx, emitter) {
-  // console.log(sender_account, appId, idx, emitter)
-  const appAddr = algosdk.getApplicationAddress(BigInt(appId))
-  const SEED_AMT = 1002000
-  let program = fs.readFileSync('sig.tmpl.teal', 'utf8')
-  program = program.replace(/TMPL_ADDR_IDX/, idx)
-  program = program.replace(/TMPL_EMITTER_ID/, '0x' + emitter)
-  program = program.replace(/TMPL_SEED_AMT/, SEED_AMT)
-  program = program.replace(/TMPL_APP_ID/, appId)
-  program = program.replace(/TMPL_APP_ADDRESS/, '0x' + Buffer.from(algosdk.decodeAddress(appAddr).publicKey).toString('hex'))
-  const compiledProgram = await pclib.compileProgram(program)
-  const logicSigAcct = new algosdk.LogicSigAccount(compiledProgram.bytes)
+// async function optin(sender_account: algosdk.Account, appId: number, idx: string, emitter: string) {
+//   // console.log(sender_account, appId, idx, emitter)
+//   const appAddr = algosdk.getApplicationAddress(BigInt(appId))
+//   const SEED_AMT = 1002000
+//   let program = fs.readFileSync('sig.tmpl.teal', 'utf8')
+//   program = program.replace(/TMPL_ADDR_IDX/, idx)
+//   program = program.replace(/TMPL_EMITTER_ID/, '0x' + emitter)
+//   program = program.replace(/TMPL_SEED_AMT/, SEED_AMT)
+//   program = program.replace(/TMPL_APP_ID/, appId)
+//   program = program.replace(/TMPL_APP_ADDRESS/, '0x' + Buffer.from(algosdk.decodeAddress(appAddr).publicKey).toString('hex'))
+//   const compiledProgram = await pclib.compileProgram(program)
+//   const logicSigAcct = new algosdk.LogicSigAccount(compiledProgram.bytes)
   
-  if (!isOptedIn) {
-    const params = await getTxParams()
-    const seedTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-      from: sender_account.addr,
-      to: logicSigAcct.address(),
-      amount: SEED_AMT,
-      suggestedParams: params
-    })
-    const optinTxn = algosdk.makeApplicationOptInTxnFromObject({
-      from: logicSigAcct.address(),
-      suggestedParams: params,
-      appIndex: parseInt(appId)
-    })
-    const rekeyTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-      from: logicSigAcct.address(),
-      to: logicSigAcct.address(),
-      amount: 0,
-      suggestedParams: params,
-      rekeyTo: appAddr
-    })
+//   if (!isOptedIn) {
+//     const params = await getTxParams()
+//     const seedTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+//       from: sender_account.addr,
+//       to: logicSigAcct.address(),
+//       amount: SEED_AMT,
+//       suggestedParams: params
+//     })
+//     const optinTxn = algosdk.makeApplicationOptInTxnFromObject({
+//       from: logicSigAcct.address(),
+//       suggestedParams: params,
+//       appIndex: appId
+//     })
+//     const rekeyTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+//       from: logicSigAcct.address(),
+//       to: logicSigAcct.address(),
+//       amount: 0,
+//       suggestedParams: params,
+//       rekeyTo: appAddr
+//     })
 
-    algosdk.assignGroupID([seedTxn, optinTxn, rekeyTxn])
+//     algosdk.assignGroupID([seedTxn, optinTxn, rekeyTxn])
 
-    console.log(`sender: ${sender_account.addr} lsig: ${logicSigAcct.address()} app_escrow: ${appAddr}}`)
-    const signedSeedTxn = seedTxn.signTxn(sender_account.sk)
-    const signedOptinTxn = algosdk.signLogicSigTransaction(optinTxn, logicSigAcct).blob
-    const signedRekeyTxn = algosdk.signLogicSigTransaction(rekeyTxn, logicSigAcct).blob
+//     console.log(`sender: ${sender_account.addr} lsig: ${logicSigAcct.address()} app_escrow: ${appAddr}}`)
+//     const signedSeedTxn = seedTxn.signTxn(sender_account.sk)
+//     const signedOptinTxn = algosdk.signLogicSigTransaction(optinTxn, logicSigAcct).blob
+//     const signedRekeyTxn = algosdk.signLogicSigTransaction(rekeyTxn, logicSigAcct).blob
 
-    const tx = await algodClient
-      .sendRawTransaction([
-        signedSeedTxn,
-        signedOptinTxn,
-        signedRekeyTxn
-      ])
-      .do()
+//     const tx = await algodClient
+//       .sendRawTransaction([
+//         signedSeedTxn,
+//         signedOptinTxn,
+//         signedRekeyTxn
+//       ])
+//       .do()
 
-    await pclib.waitForConfirmation(tx.txId)
-  }
-  return logicSigAcct.address() 
-}
+//     await pclib.waitForConfirmation(tx.txId)
+//   }
+//   return logicSigAcct.address() 
+// }
 
-async function buildTransactionGroup2 (vaa, sender_account) {
-  const MAX_BITS = 127 * 16 * 8
-  const parsedVaa = parseVAA(Buffer.from(vaa.vaa, 'hex'))
+// async function buildTransactionGroup2 (vaa, sender_account) {
+//   const MAX_BITS = 127 * 16 * 8
+//   const parsedVaa = parseVAA(Buffer.from(vaa.vaa, 'hex'))
  
-  const seq_addr = await optin(
-    sender_account,
-    coreId,
-    (parsedVaa.get('sequence') / BigInt(MAX_BITS)).toString(),
-    parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex'),
-  )
+//   const seq_addr = await optin(
+//     sender_account,
+//     coreId,
+//     (parsedVaa.get('sequence') / BigInt(MAX_BITS)).toString(),
+//     parsedVaa.get('chainRaw').toString('hex') + parsedVaa.get('emitter').toString('hex'),
+//   )
 
-  console.log('seq_addr', seq_addr)
+//   console.log('seq_addr', seq_addr)
 
-  const guardian_addr = await optin(
-    sender_account,
-    coreId,
-    parsedVaa.get('index'),
-    Buffer.from('guardian').toString('hex')
-  )
+//   const guardian_addr = await optin(
+//     sender_account,
+//     coreId,
+//     parsedVaa.get('index'),
+//     Buffer.from('guardian').toString('hex')
+//   )
   
-  console.log('guardian_addr', guardian_addr)
+//   console.log('guardian_addr', guardian_addr)
 
-  const keys = await decodeLocalState(coreId, guardian_addr)
+//   const keys = await decodeLocalState(coreId, guardian_addr)
   
-  // We process up to 9 signatures in a single TXN
+//   // We process up to 9 signatures in a single TXN
 
-  const bsize = 9*66
-  const blocks = Math.floor( parsedVaa.get('signatures').length() / bsize )  + 1
+//   const bsize = 9*66
+//   const blocks = Math.floor( parsedVaa.get('signatures').length() / bsize )  + 1
+
   
-  // We don't pass the entire payload in but instead just pass it pre digested. 
+//   const gid = pclib.beginTxGroup();
 
-  const digest = keccak256(keccak256(parsedVaa.get('digest')))
   
-  for (let i = 0; i < blocks; ++i) {
-    const sigs = parsedVaa.
-  }
+//   // We don't pass the entire payload in but instead just pass it pre digested. 
 
-  return txnId
-}
+//   const digest = keccak256(keccak256(parsedVaa.get('digest')))
+  
+//   for (let i = 0; i < blocks; ++i) {
+//     const sigs = parsedVaa.
+//   }
 
-/**
- * @param {*} numOfVerifySteps Number of verify steps.
- * @param {*} stepSize How many signatures are verified per step.
- * @param {*} guardianKeys A collection of guardian keys.
- * @param {*} guardianCount The total guardian count.
- * @param {*} signatures The signature set for verification.
- * @param {*} vaaBody An hex encoded string containing the VAA body.
- * @param {*} fee The tx fees.
- * @param {*} sender The tx sender.
- * @param {*} addVerifyTxCallback An optional callback to add each verify TX to group
- * @param {*} addLastTxCallback An optional callback to add the last TX call
- */
-async function buildTransactionGroup (numOfVerifySteps, stepSize, guardianKeys, guardianCount,
-  signatures, vaaBody, fee, sender, addVerifyTxCallback, addLastTxCallback) {
-  const params = await getTxParams()
-  if (fee !== undefined) {
-    params.fee = fee
-  }
-  const senderAddress = sender !== undefined ? sender : verifyProgramHash
-  const addVerifyCallbackFn = addVerifyTxCallback !== undefined ? addVerifyTxCallback : pclib.addVerifyTx.bind(pclib)
-  const addLastTxCallbackFn = addLastTxCallback !== undefined ? addLastTxCallback : pclib.addPriceStoreTx.bind(pclib)
+//   return txnId
+// }
 
-  // Fill remaining signatures with dummy ones for cases where not all guardians may sign.
+// /**
+//  * @param {*} numOfVerifySteps Number of verify steps.
+//  * @param {*} stepSize How many signatures are verified per step.
+//  * @param {*} guardianKeys A collection of guardian keys.
+//  * @param {*} guardianCount The total guardian count.
+//  * @param {*} signatures The signature set for verification.
+//  * @param {*} vaaBody An hex encoded string containing the VAA body.
+//  * @param {*} fee The tx fees.
+//  * @param {*} sender The tx sender.
+//  * @param {*} addVerifyTxCallback An optional callback to add each verify TX to group
+//  * @param {*} addLastTxCallback An optional callback to add the last TX call
+//  */
+// async function buildTransactionGroup (numOfVerifySteps, stepSize, guardianKeys, guardianCount,
+//   signatures, vaaBody, fee, sender, addVerifyTxCallback, addLastTxCallback) {
+//   const params = await getTxParams()
+//   if (fee !== undefined) {
+//     params.fee = fee
+//   }
+//   const senderAddress = sender !== undefined ? sender : verifyProgramHash
+//   const addVerifyCallbackFn = addVerifyTxCallback !== undefined ? addVerifyTxCallback : pclib.addVerifyTx.bind(pclib)
+//   const addLastTxCallbackFn = addLastTxCallback !== undefined ? addLastTxCallback : pclib.addPriceStoreTx.bind(pclib)
 
-  const numOfSigs = signatures.length / 132
-  const remaining = guardianCount - numOfSigs
-  if (remaining > 0) {
-    for (let i = guardianCount - remaining; i < guardianCount; ++i) {
-      signatures += i.toString(16).padStart(2, '0') + ('0'.repeat(130))
-    }
-  }
+//   // Fill remaining signatures with dummy ones for cases where not all guardians may sign.
 
-  const keyChunks = arrayChunks(guardianKeys, stepSize)
-  const sigChunks = arrayChunks(signatures, stepSize * 132)
+//   const numOfSigs = signatures.length / 132
+//   const remaining = guardianCount - numOfSigs
+//   if (remaining > 0) {
+//     for (let i = guardianCount - remaining; i < guardianCount; ++i) {
+//       signatures += i.toString(16).padStart(2, '0') + ('0'.repeat(130))
+//     }
+//   }
 
-  const gid = pclib.beginTxGroup()
-  for (let i = 0; i < numOfVerifySteps; i++) {
-    addVerifyCallbackFn(gid, senderAddress, params, vaaBody, keyChunks[i], guardianCount)
-  }
+//   const keyChunks = arrayChunks(guardianKeys, stepSize)
+//   const sigChunks = arrayChunks(signatures, stepSize * 132)
 
-  addLastTxCallbackFn(gid, ownerAccount.addr, params, payloadFromVAABody(vaaBody))
-  const tx = await pclib.commitVerifyTxGroup(gid, compiledVerifyProgram.bytes, numOfSigs, sigChunks, ownerAccount.addr, signCallback)
-  return tx
-}
+//   const gid = pclib.beginTxGroup()
+//   for (let i = 0; i < numOfVerifySteps; i++) {
+//     addVerifyCallbackFn(gid, senderAddress, params, vaaBody, keyChunks[i], guardianCount)
+//   }
+
+//   addLastTxCallbackFn(gid, ownerAccount.addr, params, payloadFromVAABody(vaaBody))
+//   const tx = await pclib.commitVerifyTxGroup(gid, compiledVerifyProgram.bytes, numOfSigs, sigChunks, ownerAccount.addr, signCallback)
+//   return tx
+// }
 
 /**
  *
  * @param {string} vaaBody Hex-encoded VAA body.
  * @returns The payload part of the VAA.
  */
-function payloadFromVAABody (vaaBody) {
+function payloadFromVAABody (vaaBody: Buffer): Buffer {
   return vaaBody.slice(51 * 2)
 }
 
@@ -455,34 +457,29 @@ function setupCore () {
   console.log('Deploying core...')
   const output = spawnSync('python', ['wormhole/algorand/admin.py', `--devnet`, `--boot`, `--mnemonic`, testConfig.OWNER_MNEMO]).output.toString()
   console.log(output)
-  arr = output.split(/\r?\n/)
-  line = arr.filter( (a) => (a.startsWith('coreid')))[0]
+  const arr = output.split(/\r?\n/)
+  const line = arr.filter( (a: string) => (a.startsWith('coreid')))[0]
   if (!line) {
     return 0
   }
   return parseInt(line.substring(line.indexOf('=') + 1))
 }
 
-function setupPricecasterLib (dumpFailedTx) {
-  // const vaaProcessorClearState = 'test/temp/vaa-clear-state.teal'
-  // const vaaProcessorApproval = 'test/temp/vaa-processor.teal'
+function setupPricecasterLib (dumpFailedTx: boolean) {
   const pricecasterApproval = 'test/temp/pricecaster-v2.teal'
   const pricecasterClearState = 'test/temp/pricecaster-clear-state.teal'
 
-  // pclib.setApprovalProgramFile('vaaProcessor', vaaProcessorApproval)
   pclib.setApprovalProgramFile('pricecaster', pricecasterApproval)
-  // pclib.setClearStateProgramFile('vaaProcessor', vaaProcessorClearState)
   pclib.setClearStateProgramFile('pricecaster', pricecasterClearState)
 
   pclib.enableDumpFailedTx(dumpFailedTx)
   pclib.setDumpFailedTxDirectory('./test/temp')
 
-  // console.log(spawnSync('python', ['teal/wormhole/pyteal/vaa-processor.py', vaaProcessorApproval, vaaProcessorClearState]).output.toString())
   console.log(spawnSync('python', ['teal/pyteal/pricecaster-v2.py', pricecasterApproval, pricecasterClearState]).output.toString())
   console.log(spawnSync('python', ['wormhole/algorand/tmplSig.py']).output.toString())
 }
 
-function createVAA (guardianSetIndex, guardianPrivKeys, pythChainId, pythEmitterAddress, numAttest) {
+function createVAA (guardianSetIndex: number, guardianPrivKeys: [], pythChainId: number, pythEmitterAddress: string, numAttest: number) {
   const vaa = testLib.createSignedPythVAA(guardianSetIndex, guardianPrivKeys, pythChainId, pythEmitterAddress, numAttest)
   const body = vaa.substr(12 + guardianPrivKeys.length * 132)
   const signatures = vaa.substr(12, guardianPrivKeys.length * 132)
@@ -494,12 +491,12 @@ function createVAA (guardianSetIndex, guardianPrivKeys, pythChainId, pythEmitter
   }
 }
 
-function getAttestation (payload, index) {
+function getAttestation (payload: Buffer, index: number) {
   return extract3(payload, 11 + (PYTH_ATTESTATION_V2_BYTES * index), PYTH_ATTESTATION_V2_BYTES)
 }
 
 // eslint-disable-next-line no-unused-vars
-function getAttestationKey (payload, index) {
+function getAttestationKey (payload: Buffer, index: number): any {
   return extract3(getAttestation(payload, index), 7, 64)
 }
 
@@ -508,13 +505,13 @@ function getAttestationKey (payload, index) {
  * @param {*} vaa The VAA to check
  * @param {*} numOfAttest  Number of attestations to check
  */
-async function checkAttestations (vaa, numOfAttest) {
+async function checkAttestations (vaa: any, numOfAttest: number) {
   let state = await tools.readAppGlobalState(algodClient, pkAppId, ownerAccount.addr)
   const payloadAttestations = Buffer.from(payloadFromVAABody(vaa.body), 'hex')
 
   // filter out vappid, sort keys.
   state = state.filter(x => Buffer.from(x.key, 'base64').toString() !== 'vaapid')
-  state.sort((a, b) => {
+  state.sort((a: any, b: any) => {
     if (a.key > b.key) {
       return 1
     }
@@ -615,13 +612,13 @@ describe('Pricecaster System Tests', function () {
   //   }
   // })
 
-  it('Must create pricecaster V2 app with VAA Processor app id set', async function () {
-    pkAppId = await createPricecasterApp(coreId)
-    console.log('    - [Created pricecaster appId: %d]', pkAppId)
+  // it('Must create pricecaster V2 app with VAA Processor app id set', async function () {
+  //   pkAppId = await createPricecasterApp(coreId)
+  //   console.log('    - [Created pricecaster appId: %d]', pkAppId)
 
-    const thisCoreId = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId('pricecaster'), ownerAccount.addr, 'coreid')
-    expect(thisCoreId).to.equal(coreId)
-  })
+  //   const thisCoreId = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId('pricecaster'), ownerAccount.addr, 'coreid')
+  //   expect(thisCoreId).to.equal(coreId)
+  // })
 
   // it('Must set stateless logic hash from owner', async function () {
   //   const teal = 'test/temp/vaa-verify.teal'
@@ -739,16 +736,16 @@ describe('Pricecaster System Tests', function () {
   //   await expect(buildTransactionGroup(groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)).to.be.rejectedWith(/transaction rejected by ApprovalProgram/g)
   // })
 
-  it('Must verify and handle Pyth V2 VAA - all signers present', async function () {
-    // const gscount = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAccount.addr, 'gscount')
-    // const stepSize = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAccount.addr, 'vssize')
-    // const groupSize = Math.ceil(gscount / stepSize)
-    const numOfAttest = 5
-    const vaa = createVAA(0, guardianPrivKeys, 1, PYTH_EMITTER, numOfAttest)
-    const tx = await buildTransactionGroup2(vaa, ownerAccount)// (groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
-    await pclib.waitForConfirmation(tx.txId)
-    // await checkAttestations(vaa, numOfAttest)
-  })
+  // it('Must verify and handle Pyth V2 VAA - all signers present', async function () {
+  //   // const gscount = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAccount.addr, 'gscount')
+  //   // const stepSize = await tools.readAppGlobalStateByKey(algodClient, CORE_CONTRACT_ID, ownerAccount.addr, 'vssize')
+  //   // const groupSize = Math.ceil(gscount / stepSize)
+  //   const numOfAttest = 5
+  //   const vaa = createVAA(0, guardianPrivKeys, 1, PYTH_EMITTER, numOfAttest)
+  //   const tx = await buildTransactionGroup2(vaa, ownerAccount)// (groupSize, stepSize, guardianKeys, gscount, vaa.signatures, vaa.body)
+  //   await pclib.waitForConfirmation(tx.txId)
+  //   // await checkAttestations(vaa, numOfAttest)
+  // })
 
   // it('Must fail to verify VAA - (shuffle signers)', async function () {
   //   const gscount = await tools.readAppGlobalStateByKey(algodClient, appId, ownerAccount.addr, 'gscount')

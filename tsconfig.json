@@ -21,7 +21,7 @@
 		"resolveJsonModule": true,
 		"removeComments": true,
 		"outDir": "build",
-		"types": ["node"],
+		"types": ["node", "mocha"],
 		"lib": [ "ES2020.Promise" ],
 	},
 	"include": [
