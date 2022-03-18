@@ -5,13 +5,12 @@ const { expect } = require('chai')
 const chai = require('chai')
 const spawnSync = require('child_process').spawnSync
 const fs = require('fs')
-const TestLib = require('./testlib.js')
+const TestLib = require('./testlib')
 const { makePaymentTxnWithSuggestedParams } = require('algosdk')
 const testConfig = require('./test-config')
 const { extract3, arrayChunks } = require('../tools/app-tools')
 const { keccak256 } = require('web3-utils')
 chai.use(require('chai-as-promised'))
-const testLib = new TestLib.TestLib()
 import algosdk, { Transaction } from 'algosdk'
 //import WormholeAlgoSdk from 'wormhole/sdk/js/src/token_bridge/Algorand'
 
@@ -416,7 +415,7 @@ async function getTxParams () {
  * @param {string} vaaBody Hex-encoded VAA body.
  * @returns The payload part of the VAA.
  */
-function payloadFromVAABody (vaaBody: Buffer): Buffer {
+function payloadFromVAABody (vaaBody: string): string {
   return vaaBody.slice(51 * 2)
 }
 
@@ -480,7 +479,7 @@ function setupPricecasterLib (dumpFailedTx: boolean) {
 }
 
 function createVAA (guardianSetIndex: number, guardianPrivKeys: [], pythChainId: number, pythEmitterAddress: string, numAttest: number) {
-  const vaa = testLib.createSignedPythVAA(guardianSetIndex, guardianPrivKeys, pythChainId, pythEmitterAddress, numAttest)
+  const vaa = TestLib.createSignedPythVAA(guardianSetIndex, guardianPrivKeys, pythChainId, pythEmitterAddress, numAttest)
   const body = vaa.substr(12 + guardianPrivKeys.length * 132)
   const signatures = vaa.substr(12, guardianPrivKeys.length * 132)
 
@@ -510,7 +509,7 @@ async function checkAttestations (vaa: any, numOfAttest: number) {
   const payloadAttestations = Buffer.from(payloadFromVAABody(vaa.body), 'hex')
 
   // filter out vappid, sort keys.
-  state = state.filter(x => Buffer.from(x.key, 'base64').toString() !== 'vaapid')
+  state = state.filter( (x: any) => Buffer.from(x.key, 'base64').toString() !== 'vaapid')
   state.sort((a: any, b: any) => {
     if (a.key > b.key) {
       return 1
@@ -845,3 +844,7 @@ describe('Pricecaster System Tests', function () {
   //   await expect(execVerify(groupSize, vssize, guardianKeys, pythVaaSignatures2, pythVaaBody, gscount)).to.be.rejectedWith('Bad Request')
   // })
 })
+function x(x: any, arg1: (object: any) => boolean): any {
+  throw new Error('Function not implemented.')
+}
+

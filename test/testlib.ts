@@ -33,7 +33,7 @@ export default class TestLib {
       * @param {*} pythEmitterAddress The address of Pyth contract.
       * @param {*} numOfAttest The number of attestations to generate in the payload.
       */
-  createSignedPythVAA (guardianSetIndex: number,
+  static createSignedPythVAA (guardianSetIndex: number,
     signers: [],
     pythChainId: number,
     pythEmitterAddress: string,
@@ -159,7 +159,7 @@ export default class TestLib {
       * @param {*} consistencyLevel  The reported consistency level
       * @param {*} payload This VAA Payload hex string, prefixed with 0x
       */
-  createSignedVAA (guardianSetIndex: number,
+  static createSignedVAA (guardianSetIndex: number,
     signers: [],
     timestamp: number,
     nonce: number,
@@ -212,14 +212,14 @@ export default class TestLib {
     return vm
   }
 
-  zeroPadBytes (value, length: number) {
+  static zeroPadBytes (value: string, length: number) {
     while (value.length < 2 * length) {
       value = '0' + value
     }
     return value
   }
 
-  shuffle (array: []) {
+  static shuffle (array: []) {
     let currentIndex = array.length; let randomIndex
 
     // While there remain elements to shuffle...
@@ -236,7 +236,7 @@ export default class TestLib {
     return array
   }
 
-  hexToBytes (hex: string) {
+  static hexToBytes (hex: string) {
     // eslint-disable-next-line no-var
     for (var bytes = [], c = 0; c < hex.length; c += 2) { bytes.push(parseInt(hex.substr(c, 2), 16)) }
     return bytes
