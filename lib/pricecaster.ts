@@ -68,7 +68,7 @@ export const PRICECASTER_CI: ContractInfo = {
 // --------------------------------------------------------------------------------------
 type SignCallback = (arg0: string, arg1: algosdk.Transaction) => any
 
-class PricecasterLib {
+export default class PricecasterLib {
   private algodClient: algosdk.Algodv2
   private ownerAddr: string
   private minFee: number
@@ -599,8 +599,4 @@ class PricecasterLib {
     //   return tx.txID()
     // }
   //}
-}
-
-module.exports = {
-  PricecasterLib
 }
