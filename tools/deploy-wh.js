@@ -47,6 +47,14 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
   console.log('Deployment App Id: %d', pkAppId)
   pclib.setAppId('pricekeeper', pkAppId)
 
+  console.log('Creating ASA ID Mapper...')
+  txId = await pclib.createMapperApp(fromAddress, signCallback)
+  console.log('txId: ' + txId)
+  txResponse = await pclib.waitForTransactionResponse(txId)
+  const mapperAppId = pclib.appIdFromCreateAppResponse(txResponse)
+  console.log('Deployment App Id: %d', mapperAppId)
+  pclib.setAppId('mapper', mapperAppId)
+
   console.log('Setting VAA Processor authid parameter...')
   txId = await pclib.setAuthorizedAppId(fromAddress, pkAppId, signCallback)
   console.log('txId: ' + txId)
@@ -71,7 +79,7 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
   const binaryFileName = 'VAA-VERIFY-' + dt + '.BIN'
 
   console.log(`Writing deployment results file ${resultsFileName}...`)
-  fs.writeFileSync(resultsFileName, `vaaProcessorAppId: ${appId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}'`)
+  fs.writeFileSync(resultsFileName, `vaaProcessorAppId: ${appId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}'\nasaIdMapperAppId: ${mapperAppId}`)
 
   console.log(`Writing stateless code binary file ${binaryFileName}...`)
   fs.writeFileSync(binaryFileName, compiledVerifyProgram.bytes)
@@ -111,8 +119,7 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
     config.server = 'http://localhost'
     config.apiToken = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
     config.port = 4001
-  }
-  else {
+  } else {
     console.error('Invalid network: ' + network)
     exit(1)
   }

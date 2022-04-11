@@ -104,9 +104,6 @@ dist
 .tern-port
 
 teal/wormhole/pyteal/__pycache__/*
-teal/wormhole/build/*.teal
-test/temp/*.teal
-
 
 dump/*
 test/temp/*
@@ -115,3 +112,6 @@ keys/*
 DEPLOY-*
 VAA-VERIFY-*
 build/*
+*.pyc
+
+*.teal
