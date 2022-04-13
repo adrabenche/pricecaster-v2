@@ -29,6 +29,7 @@ import * as Logger from '@randlabs/js-logger'
 import { sleep } from '../common/sleep'
 import { PythSymbolInfo } from './SymbolInfo'
 import { PythData } from 'backend/common/basetypes'
+import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
 const fs = require('fs')
 const algosdk = require('algosdk')
 
@@ -93,6 +94,17 @@ export class WormholeClientEngine implements IEngine {
       this.settings.pyth.chainId,
       this.settings.pyth.emitterAddress,
       symbolInfo)
+
+    Logger.info('Updating Mapper state...')
+    const mapper = new Pyth2AsaMapper(this.settings.apps.asaIdMapperAppId,
+      algosdk.mnemonicToSecretKey(mnemo.toString()),
+      this.settings.algo.token,
+      this.settings.algo.api,
+      this.settings.algo.port,
+      this.settings.apps.asaIdMapperDataNetwork,
+      symbolInfo)
+
+    await mapper.updateMappings()
 
     Logger.info('Waiting for fetcher to boot...')
     await fetcher.start()

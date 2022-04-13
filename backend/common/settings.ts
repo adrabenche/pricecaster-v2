@@ -38,6 +38,8 @@ export interface IAppSettings extends Record<string, unknown> {
     vaaVerifyProgramBinFile: string,
     vaaVerifyProgramHash: string,
     vaaProcessorAppId: number,
+    asaIdMapperAppId: number,
+    asaIdMapperDataNetwork: 'testnet' | 'mainnet'
   },
   pyth: {
     chainId: number,
