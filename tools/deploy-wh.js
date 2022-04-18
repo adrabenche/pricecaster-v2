@@ -23,7 +23,7 @@ function signCallback (sender, tx) {
   return txSigned
 }
 
-async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
+async function startOp (algodClient, fromAddress, gexpTime, gkeys, flags) {
   console.log('Compiling programs ...\n')
   let out = spawnSync('python', ['teal/wormhole/pyteal/vaa-processor.py'])
   console.log(out.output.toString())
@@ -32,7 +32,7 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
 
   const pclib = new PricecasterLib.PricecasterLib(algodClient)
   console.log('Creating VAA Processor...')
-  let txId = await pclib.createVaaProcessorApp(fromAddress, gexpTime, 0, gkeys.join(''), signCallback)
+  let txId = await pclib.createVaaProcessorApp(fromAddress, gexpTime, 0, gkeys.join(''), flags, signCallback)
   console.log('txId: ' + txId)
   let txResponse = await pclib.waitForTransactionResponse(txId)
   const appId = pclib.appIdFromCreateAppResponse(txResponse)
@@ -40,7 +40,7 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
   pclib.setAppId('vaaProcessor', appId)
 
   console.log('Creating Pricekeeper V2...')
-  txId = await pclib.createPricekeeperApp(fromAddress, appId, signCallback)
+  txId = await pclib.createPricekeeperApp(fromAddress, appId, flags, signCallback)
   console.log('txId: ' + txId)
   txResponse = await pclib.waitForTransactionResponse(txId)
   const pkAppId = pclib.appIdFromCreateAppResponse(txResponse)
@@ -48,7 +48,7 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
   pclib.setAppId('pricekeeper', pkAppId)
 
   console.log('Creating ASA ID Mapper...')
-  txId = await pclib.createMapperApp(fromAddress, signCallback)
+  txId = await pclib.createMapperApp(fromAddress, flags, signCallback)
   console.log('txId: ' + txId)
   txResponse = await pclib.waitForTransactionResponse(txId)
   const mapperAppId = pclib.appIdFromCreateAppResponse(txResponse)
@@ -88,25 +88,32 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
 (async () => {
   console.log('\nPricecaster v2 Apps Deployment Tool')
 
-  if (process.argv.length !== 7) {
-    console.log('Usage: deploy <glistfile> <from> <network>\n')
+  if (process.argv.length < 7) {
+    console.log('Usage: deploy <glistfile> <gexptime> <from> <network> <keyfile> <flags...>\n')
     console.log('where:\n')
     console.log('glistfile              File containing the initial list of guardians')
     console.log('gexptime               Guardian set expiration time')
     console.log('from                   Deployer account')
     console.log('network                Testnet, betanet, mainnet or sandbox.')
     console.log('keyfile                Secret file containing signing key mnemonic')
+    console.log('flags                  Specify the following flags affecting compilation: ')
+    console.log('                       TESTMODE      Enable testing mode for certain contracts. **Do not use in production**')
     console.log('\n- File must contain one guardian key per line, formatted in hex, without hex prefix.')
     console.log('\n- Deployment process will generate one DEPLOY-xxxx file with application Ids, stateless hash, and')
     console.log('  a VAA-VERIFY-XXXX.bin with stateless compiled bytes, to use with backend configuration')
     exit(0)
   }
 
+  const compileFlags = {
+    testmode: false
+  }
   const listfile = process.argv[2]
   const gexpTime = process.argv[3]
   const fromAddress = process.argv[4]
   const network = process.argv[5]
   const keyfile = process.argv[6]
+
+  const flags = process.argv.slice(7)
 
   const config = { server: '', apiToken: '', port: '' }
   if (network === 'betanet') {
@@ -131,6 +138,23 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
     exit(1)
   }
 
+  /* validate flags */
+
+  flags.forEach(f => {
+    switch (f) {
+      case 'testmode':
+      case 'TESTMODE':
+        compileFlags.testmode = true
+        break
+
+      default:
+        console.error(`Unknown flag: ${f}`)
+        exit(1)
+    }
+  })
+
+  /* go */
+
   const algodClient = new algosdk.Algodv2(config.apiToken, config.server, config.port)
 
   console.log('Parameters for deployment: ')
@@ -138,6 +162,9 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
   console.log('Network: ' + network)
   console.log('Guardian expiration time: ' + gexpTime)
   console.log(`Guardian Keys: (${gkeys.length}) ` + gkeys)
+  if (compileFlags.testmode) {
+    console.log('Test-mode ENABLED')
+  }
   const answer = await ask('\nEnter YES to confirm parameters, anything else to abort. ')
   if (answer !== 'YES') {
     console.warn('Aborted by user.')
@@ -145,7 +172,7 @@ async function startOp (algodClient, fromAddress, gexpTime, gkeys) {
   }
   globalMnemo = fs.readFileSync(keyfile).toString()
   try {
-    await startOp(algodClient, fromAddress, gexpTime, gkeys)
+    await startOp(algodClient, fromAddress, gexpTime, gkeys, compileFlags)
   } catch (e) {
     console.error('(!) Deployment Failed: ' + e.toString())
   }
