@@ -65,6 +65,27 @@ export const PRICECASTER_CI: ContractInfo = {
   appId: 0
 }
 
+// Pricecaster Contract Info
+export const MAPPER_CI: ContractInfo = {
+  schema: {
+    globalInts: 1,
+    globalBytes: 63,
+    localInts: 0,
+    localBytes: 0
+  },
+  approvalProgramFile: 'teal/build/mapper-approval.teal',
+  clearStateProgramFile: 'teal/build/mapper-clear.teal',
+  compiledApproval: {
+    bytes: new Uint8Array(),
+    hash: ''
+  },
+  compiledClearState: {
+    bytes: new Uint8Array(),
+    hash: ''
+  },
+  appId: 0
+}
+
 // --------------------------------------------------------------------------------------
 type SignCallback = (arg0: string, arg1: algosdk.Transaction) => any
 
@@ -314,6 +335,16 @@ export default class PricecasterLib {
     }
 
     /**
+       * Create the Mapper application based on the default approval and clearState programs or based on the specified files.
+       * @param  {String} sender account used to sign the createApp transaction
+       * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
+       * @return {String} transaction id of the created application
+       */
+    async createMapperApp(sender: string, signCallback: SignCallback): Promise<any> {
+      return this.createApp(sender, MAPPER_CI, [], signCallback)
+    }
+
+    /**
      * Internal function.
      * Call application specifying args and accounts.
      * @param  {String} sender caller address
@@ -452,6 +483,24 @@ export default class PricecasterLib {
 
     // }
     // }
+
+    /**
+     * Call the Mapper contract to add a new Key-to-price+productId relationship.
+     * @param sender The sender contract
+     * @param asaId The ASA ID.
+     * @param key The product-price key associated to the ASAID.
+     * @param signCallback Sign function callback
+     * @returns A promise for the transaction identifier.
+     */
+
+    async setMappingEntry (sender: string, asaId: number, key: Uint8Array, signCallback: SignCallback): Promise<string> {
+      if (!algosdk.isValidAddress(sender)) {
+        throw new Error('Invalid sender address: ' + sender)
+      }
+      const appArgs = []
+      appArgs.push(new Uint8Array(Buffer.from('store')), algosdk.encodeUint64(asaId), key)
+      return await this.callApp(sender, MAPPER_CI, appArgs, [], signCallback)
+    }
 
     /**
      * Starts a begin...commit section for commiting grouped transactions.

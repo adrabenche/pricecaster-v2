@@ -103,10 +103,7 @@ dist
 # TernJS port file
 .tern-port
 
-teal/pyteal/__pycache__/*
-teal/build/*.teal
-test/temp/*.teal
-
+teal/wormhole/pyteal/__pycache__/*
 
 dump/*
 test/temp/*
@@ -115,5 +112,6 @@ keys/*
 DEPLOY-*
 VAA-VERIFY-*
 build/*
+*.pyc
 
 *.teal

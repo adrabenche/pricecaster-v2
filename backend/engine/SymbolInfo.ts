@@ -71,4 +71,8 @@ export class PythSymbolInfo {
   getSymbolCount () {
     return this.symbolMap.size
   }
+
+  getRawMap () {
+    return this.symbolMap
+  }
 }
