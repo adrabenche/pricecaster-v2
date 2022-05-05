@@ -20,9 +20,9 @@
 
 /* eslint-disable linebreak-style */
 import algosdk from 'algosdk'
+import PricecasterLib, { MAPPER_CI, PRICECASTER_CI } from '../lib/pricecaster'
 const { exit } = require('process')
 const readline = require('readline')
-const PricecasterLib = require('../lib/pricecaster')
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
@@ -44,18 +44,29 @@ function signCallback (sender: string, tx: algosdk.Transaction) {
 }
 
 async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreId: string) {
-  const pclib = new PricecasterLib.PricecasterLib(algodClient)
+  const pclib = new PricecasterLib(algodClient, fromAddress)
 
   let out = spawnSync('python', [config.sources.pricecaster_pyteal])
   console.log(out.output.toString())
 
   console.log('Creating Pricekeeper V2...')
-  const txId = await pclib.createPricecasterApp(fromAddress, coreId, signCallback)
+  let txId = await pclib.createPricecasterApp(fromAddress, parseInt(coreId), signCallback)
   console.log('txId: ' + txId)
-  const txResponse = await pclib.waitForTransactionResponse(txId)
+  let txResponse = await pclib.waitForTransactionResponse(txId)
   const pkAppId = pclib.appIdFromCreateAppResponse(txResponse)
   console.log('Deployment App Id: %d', pkAppId)
-  pclib.setAppId('pricecaster', pkAppId)
+  pclib.setAppId(PRICECASTER_CI, pkAppId)
+
+  out = spawnSync('python', [config.sources.mapper_pyteal])
+  console.log(out.output.toString())
+
+  console.log('Creating ASA ID Mapper...')
+  txId = await pclib.createMapperApp(fromAddress, signCallback)
+  console.log('txId: ' + txId)
+  txResponse = await pclib.waitForTransactionResponse(txId)
+  const mapperAppId = pclib.appIdFromCreateAppResponse(txResponse)
+  console.log('Deployment App Id: %d', mapperAppId)
+  pclib.setAppId(MAPPER_CI, mapperAppId)
 
   console.log('Compiling verify VAA stateless code...')
   out = spawnSync('python', [config.sources.vaa_verify_pyteal])
@@ -71,7 +82,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   const binaryFileName = 'VAA-VERIFY-' + dt + '.BIN'
 
   console.log(`Writing deployment results file ${resultsFileName}...`)
-  fs.writeFileSync(resultsFileName, `wormholeCoreAppId: ${coreId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}'`)
+  fs.writeFileSync(resultsFileName, `wormholeCoreAppId: ${coreId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}\nasaIdMapperAppId: ${mapperAppId}'`)
 
   console.log(`Writing stateless code binary file ${binaryFileName}...`)
   fs.writeFileSync(binaryFileName, compiledVerifyProgram.bytes)

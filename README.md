@@ -156,7 +156,57 @@ npm install
 
 ## Deployment of Applications
 
-* The Wormhole Core contract and the VAA Verify code have it's own deployment tool `admin.py` at the Certus One repository. 
+* The Wormhole Core contract and the VAA Verify code have it's own deployment tool `algorand/admin.py` at the Certus One repository. 
+
+Here is a sample output to deploy the Core Contracts in a sandboxed environment: 
+
+```$ python admin.py --devnet --boot
+(True, 'teal/core_approve.teal', 'teal/core_clear.teal', <algosdk.v2client.algod.AlgodClient object at 0x00000181066117E0>, 1002000, <TmplSig.TmplSig object at 0x0000018106611780>, True)
+Writing teal/core_approve.teal
+Writing teal/core_clear.teal
+Generating the teal for the core contracts
+Writing teal/token_approve.teal
+Writing teal/token_clear.teal
+Generating the teal for the token contracts: 4289
+Generating the foundation account...
+L9gdTqISnJFAwNgA10HFZ9ht+7SwtZ74TIzaMV8SV3nvYTyYkfnOklIxXQLpPsbQCjjNzsLZ+wbRX3xcjcK1vA==
+    album jazz check clay deal caught acoustic sugar theme also tired major sweet disagree mad remember because crop economy buffalo salmon setup skirt about gravity
+    55QTZGER7HHJEURRLUBOSPWG2AFDRTOOYLM7WBWRL56FZDOCWW6IMQYOU4
+KL347v/4UOjjG1usk1FKl7Ir0c0qF2mJahEX9buKwpH1Pb9oQQtnmiqxO31CXw+TbljMF1pI20BENHdKdI2fog==
+    pink title wash morning peanut wheel tenant force intact edge pioneer city first inmate filter blame coffee pretty master fabric jewel pencil mix above just
+    6U6362CBBNTZUKVRHN6UEXYPSNXFRTAXLJENWQCEGR3UU5ENT6RORDKSLA
+O0fX5N6oH7Y+LBNuiGNhz0Pz/ruMH3hDGtQu/ck31TZgr/b1yjwOtVx96AyF+Cj4aAuvOF5sfZGTm2YBP1VLNA==
+    trash fringe include mistake dismiss pulse giggle basket assist mixed radar diagram track zero grape buzz humor harbor head spray negative evil repeat ability relief
+    MCX7N5OKHQHLKXD55AGIL6BI7BUAXLZYLZWH3EMTTNTACP2VJM2P7VQ4TI
+QR6W4l7PKVIgdn+0ewEZw0eSQiMcLuWNmZGN4vOeJCwEqWbjAxODlHTRS8zHKJSprtmqa90CLXvUpLdetrfA8A==
+    sight flash image vote fatal behind rain legal isolate album milk label cause spawn three come royal great silver churn treat chicken gentle ability abstract
+    ASUWNYYDCOBZI5GRJPGMOKEUVGXNTKTL3UBC266UUS3V5NVXYDYBO2SK5A
+I2PB2eJQDiUUkJuxHtrfBBSNAK834YWap5iLtiMpSj8WeLLkp6FP9qpVSZEJ+XbIBIEwfSn1Jm4PYCapBXqozA==
+    good airport hollow athlete bronze announce level oppose stomach half husband doctor boss scan runway thrive expose oyster slush hamster electric medal where ability electric
+    CZ4LFZFHUFH7NKSVJGIQT6LWZACICMD5FH2SM3QPMATKSBL2VDGDX4P3DQ
+Te4Z62VmHq6hyl8fFp3rwRV/XKTK5KAMtPXf117oFLyGeeX5Qk6j277I6xMEXNh6rKSidaP+GA40oNPfKtYLPA==
+    situate guilt void green devote high fence garlic sentence inmate volume foster wreck blade festival tooth neglect south width law sad deliver thing absent dentist
+    QZ46L6KCJ2R5XPWI5MJQIXGYPKWKJITVUP7BQDRUUDJ56KWWBM6HW6FE74
+foundation address MCX7N5OKHQHLKXD55AGIL6BI7BUAXLZYLZWH3EMTTNTACP2VJM2P7VQ4TI  (100000.0 ALGO)
+
+Creating the PortalCore app
+Reading teal/core_approve.teal
+Reading teal/core_clear.teal
+{'address': 'JYJEGKPTKMW4SA2GX5J4XGGS2I4K2I2LLZN534P5KDEG4H7WYH2CF256K4',
+ 'emitterAddress': '4e124329f3532dc90346bf53cb98d2d238ad234b5e5bddf1fd50c86e1ff6c1f4',
+ 'wormhole core': '1054'}
+Create the token bridge
+Reading teal/token_approve.teal
+Reading teal/token_clear.teal
+token bridge contract is too large... This might prevent updates later
+{'address': 'XAMJRRHC36UE56QCLKS3HQ42EMWPMRBDCWGHFFT62PCAUOPWVXRDD5UF3M',
+ 'emitterAddress': 'b81898c4e2dfa84efa025aa5b3c39a232cf64423158c72967ed3c40a39f6ade2',
+ 'token bridge': '1056'}
+HFFy4BIqRzSIHs/OV0CY5e8UrfV3ns0QOWcfGwslXLSINIPubgTt57wILBF02Uc4hiW48pcXarei/6lLWNza4w==
+    castle sing ice patrol mixture artist violin someone what access slow wrestle clap hero sausage oyster boost tone receive rapid bike announce pepper absent involve
+    RA2IH3TOATW6PPAIFQIXJWKHHCDCLOHSS4LWVN5C76UUWWG43LRQNHGCD4
+Sent some ALGO to: castle sing ice patrol mixture artist violin someone what access slow wrestle clap hero sausage oyster boost tone receive rapid bike announce pepper absent involve
+```
 
 * To deploy the Pricecaster-V2, follow the instructions below.
 

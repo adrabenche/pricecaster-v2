@@ -56,8 +56,8 @@ def clear_state_program():
 
 if __name__ == "__main__":
 
-    approval_outfile = "teal/wormhole/build/mapper-approval.teal"
-    clear_state_outfile = "teal/wormhole/build/mapper-clear.teal"
+    approval_outfile = "teal/build/mapper-approval.teal"
+    clear_state_outfile = "teal/build/mapper-clear.teal"
 
     if len(sys.argv) >= 2:
         approval_outfile = sys.argv[1]
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         clear_state_outfile = sys.argv[2]
 
-    print("Pricekeeper V2 Program, (c) 2022 Wormhole Project Contributors")
+    print("ASA ID Mapper Program, (c) 2022 Wormhole Project Contributors")
     print("Compiling approval program...")
 
     with open(approval_outfile, "w") as f:

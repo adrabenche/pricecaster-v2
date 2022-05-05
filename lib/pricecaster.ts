@@ -18,7 +18,7 @@
  *
  */
 
-import algosdk from "algosdk"
+import algosdk from 'algosdk'
 // eslint-disable-next-line camelcase
 import tools from '../tools/app-tools'
 import crypto from 'crypto'
@@ -65,7 +65,7 @@ export const PRICECASTER_CI: ContractInfo = {
   appId: 0
 }
 
-// Pricecaster Contract Info
+// Mapper Contract Info
 export const MAPPER_CI: ContractInfo = {
   schema: {
     globalInts: 1,
@@ -102,125 +102,125 @@ export default class PricecasterLib {
     this.algodClient = algodClient
     this.ownerAddr = ownerAddr
     this.minFee = 1000
-    this.groupTxSet = {} 
+    this.groupTxSet = {}
     this.lsigs = {}
     this.dumpFailedTx = false
     this.dumpFailedTxDirectory = './'
   }
 
-    /** Set the file dumping feature on failed group transactions
+  /** Set the file dumping feature on failed group transactions
      * @param {boolean} f Set to true to enable function, false to disable.
      */
-    enableDumpFailedTx(f: boolean) {
-      this.dumpFailedTx = f
-    }
+  enableDumpFailedTx (f: boolean) {
+    this.dumpFailedTx = f
+  }
 
-    /** Set the file dumping feature output directory
+  /** Set the file dumping feature output directory
      * @param {string} dir The output directory.
      */
-    setDumpFailedTxDirectory (dir: string) {
-      this.dumpFailedTxDirectory = dir
-    }
+  setDumpFailedTxDirectory (dir: string) {
+    this.dumpFailedTxDirectory = dir
+  }
 
-    /** Sets a contract approval program filename
+  /** Sets a contract approval program filename
      * @param {string} contract The contract info to set
      * @param {string} filename New file name to use.
      */
-    setApprovalProgramFile (pcci: ContractInfo, filename: string) {
-      pcci.approvalProgramFile = filename
-    }
+  setApprovalProgramFile (pcci: ContractInfo, filename: string) {
+    pcci.approvalProgramFile = filename
+  }
 
-    /** Sets a contract clear state program filename
+  /** Sets a contract clear state program filename
      * @param {string} contract The contract info to set
      * @param {string} filename New file name to use.
      */
-    setClearStateProgramFile (pcci: ContractInfo, filename: string) {
-      pcci.clearStateProgramFile = filename
-    }
+  setClearStateProgramFile (pcci: ContractInfo, filename: string) {
+    pcci.clearStateProgramFile = filename
+  }
 
-    /** Sets approval program bytes and hash
+  /** Sets approval program bytes and hash
     * @param {string} contract The contract info to set
     * @param {*}      bytes Compiled program bytes
     * @param {string} hash  Compiled program hash
     */
-    setCompiledApprovalProgram (pcci: ContractInfo, bytes: Uint8Array, hash: string) {
-      pcci.compiledApproval.bytes = bytes
-      pcci.compiledApproval.hash = hash
-    }
+  setCompiledApprovalProgram (pcci: ContractInfo, bytes: Uint8Array, hash: string) {
+    pcci.compiledApproval.bytes = bytes
+    pcci.compiledApproval.hash = hash
+  }
 
-    /** Sets compiled clear state contract bytes and hash
+  /** Sets compiled clear state contract bytes and hash
     * @param {string} contract The contract info to set
     * @param {*}      bytes Compiled program bytes
     * @param {string} hash  Compiled program hash
     */
-    setCompiledClearStateProgram (pcci: ContractInfo, bytes: Uint8Array, hash: string) {
-      pcci.compiledClearState.bytes = bytes
-      pcci.compiledClearState.hash = hash
-    }
+  setCompiledClearStateProgram (pcci: ContractInfo, bytes: Uint8Array, hash: string) {
+    pcci.compiledClearState.bytes = bytes
+    pcci.compiledClearState.hash = hash
+  }
 
-    /**
+  /**
      * Set Application Id for a contract.
      * @param {number} applicationId application id
      * @returns {void}
      */
-    setAppId (pcci: ContractInfo, applicationId: number) {
-      pcci.appId = applicationId
-    }
+  setAppId (pcci: ContractInfo, applicationId: number) {
+    pcci.appId = applicationId
+  }
 
-    /**
+  /**
      * Get the Application id for a specific contract
      * @returns The requested application Id
      */
-    getAppId (pcci: ContractInfo) {
-      return pcci.appId
-    }
+  getAppId (pcci: ContractInfo) {
+    return pcci.appId
+  }
 
-    /**
+  /**
      * Get minimum fee to pay for transactions.
      * @return {Number} minimum transaction fee
      */
-    minTransactionFee(): number {
-      return this.minFee
-    }
+  minTransactionFee (): number {
+    return this.minFee
+  }
 
-    /**
+  /**
      * Internal function.
      * Read application local state related to the account.
      * @param  {String} accountAddr account to retrieve local state
      * @return {Array} an array containing all the {key: value} pairs of the local state
      */
-    async readLocalState  (accountAddr: string, pcci: ContractInfo): Promise<any> {
-      return tools.readAppLocalState(this.algodClient, pcci.appId, accountAddr)
-    }
+  async readLocalState (accountAddr: string, pcci: ContractInfo): Promise<any> {
+    return tools.readAppLocalState(this.algodClient, pcci.appId, accountAddr)
+  }
 
-    /**
+  /**
      * Internal function.
      * Read application global state.
      * @return {Array} an array containing all the {key: value} pairs of the global state
      * @returns {void}
      */
-    async readGlobalState  (pcci: ContractInfo): Promise<any> {
-      return tools.readAppGlobalState(this.algodClient, pcci.appId, this.ownerAddr)
-    }
+  async readGlobalState (pcci: ContractInfo): Promise<any> {
+    return tools.readAppGlobalState(this.algodClient, pcci.appId, this.ownerAddr)
+  }
 
-    /**
+  /**
      * Print local state of accountAddr on stdout.
      * @param  {String} accountAddr account to retrieve local state
      * @returns {void}
      */
-    async printLocalState (accountAddr: string, pcci: ContractInfo): Promise<void> {
-      await tools.printAppLocalState(this.algodClient, pcci.appId, accountAddr)
-    }
+  async printLocalState (accountAddr: string, pcci: ContractInfo): Promise<void> {
+    await tools.printAppLocalState(this.algodClient, pcci.appId, accountAddr)
+  }
 
-    /**
+  /**
      * Print application global state on stdout.
      * @returns {void}
      */
-    async printGlobalState(pcci: ContractInfo): Promise<void> {
-      await tools.printAppGlobalState(this.algodClient, pcci.appId, this.ownerAddr)
-    }
+  async printGlobalState (pcci: ContractInfo): Promise<void> {
+    await tools.printAppGlobalState(this.algodClient, pcci.appId, this.ownerAddr)
+  }
 
-    /**
+  /**
      * Internal function.
      * Read application local state variable related to accountAddr.
      * @param  {String} accountAddr account to retrieve local state
@@ -228,123 +228,122 @@ export default class PricecasterLib {
      * @return {String/Number} it returns the value associated to the key that could be an address, a number or a
      * base64 string containing a ByteArray
      */
-    async readLocalStateByKey  (accountAddr: string, key: string, pcci: ContractInfo): Promise<any> {
-      return tools.readAppLocalStateByKey(this.algodClient, pcci.appId, accountAddr, key)
-    }
+  async readLocalStateByKey (accountAddr: string, key: string, pcci: ContractInfo): Promise<any> {
+    return tools.readAppLocalStateByKey(this.algodClient, pcci.appId, accountAddr, key)
+  }
 
-    /**
+  /**
      * Internal function.
      * Read application global state variable.
      * @param  {String} key variable key to get the value associated
      * @return {String/Number} it returns the value associated to the key that could be an address,
      * a number or a base64 string containing a ByteArray
      */
-    async readGlobalStateByKey  (key: string, pcci: ContractInfo): Promise<any> {
-      return tools.readAppGlobalStateByKey(this.algodClient, pcci.appId, this.ownerAddr, key)
-    }
+  async readGlobalStateByKey (key: string, pcci: ContractInfo): Promise<any> {
+    return tools.readAppGlobalStateByKey(this.algodClient, pcci.appId, this.ownerAddr, key)
+  }
 
-    /**
+  /**
      * Compile program that programFilename contains.
      * @param {String} programBytes Array of program bytes
      * @return {String} base64 string containing the compiled program
      */
-    async compileProgram(programBytes: Uint8Array): Promise<{ bytes: Uint8Array; hash: any }> {
-      const compileResponse = await this.algodClient.compile(programBytes).do()
-      const compiledBytes = new Uint8Array(Buffer.from(compileResponse.result, 'base64'))
-      return { bytes: compiledBytes, hash: compileResponse.hash }
-    }
+  async compileProgram (programBytes: Uint8Array): Promise<{ bytes: Uint8Array; hash: any }> {
+    const compileResponse = await this.algodClient.compile(programBytes).do()
+    const compiledBytes = new Uint8Array(Buffer.from(compileResponse.result, 'base64'))
+    return { bytes: compiledBytes, hash: compileResponse.hash }
+  }
 
-    /**
+  /**
      * Compile clear state program.
      */
-    async compileClearProgram(pcci: ContractInfo) {
-      const program = fs.readFileSync(pcci.clearStateProgramFile, 'utf8')
-      pcci.compiledClearState = await this.compileProgram(program)
-    }
+  async compileClearProgram (pcci: ContractInfo) {
+    const program = fs.readFileSync(pcci.clearStateProgramFile, 'utf8')
+    pcci.compiledClearState = await this.compileProgram(program)
+  }
 
-    /**
+  /**
      * Compile approval program.
      */
-    async compileApprovalProgram (pcci: ContractInfo) {
-      const program = fs.readFileSync(pcci.approvalProgramFile, 'utf8')
-      pcci.compiledApproval = await this.compileProgram(program)
-    }
+  async compileApprovalProgram (pcci: ContractInfo) {
+    const program = fs.readFileSync(pcci.approvalProgramFile, 'utf8')
+    pcci.compiledApproval = await this.compileProgram(program)
+  }
 
-    /**
+  /**
      * Helper function to retrieve the application id from a createApp transaction response.
      * @param  {Object} txResponse object containig the transactionResponse of the createApp call
      * @return {Number} application id of the created application
      */
-    appIdFromCreateAppResponse  (txResponse: any): any {
-      return txResponse['application-index']
-    }
+  appIdFromCreateAppResponse (txResponse: any): any {
+    return txResponse['application-index']
+  }
 
-
-    /**
+  /**
      * Create an application based on the default approval and clearState programs or based on the specified files.
      * @param  {String} sender account used to sign the createApp transaction
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
      * @return {String} transaction id of the created application
      */
-    async createApp(sender: string,
-      pcci: ContractInfo,
-      appArgs: Uint8Array[],
-      signCallback: SignCallback,
-      skipCompile?: any): Promise<string> {
-      const onComplete = algosdk.OnApplicationComplete.NoOpOC
+  async createApp (sender: string,
+    pcci: ContractInfo,
+    appArgs: Uint8Array[],
+    signCallback: SignCallback,
+    skipCompile?: any): Promise<string> {
+    const onComplete = algosdk.OnApplicationComplete.NoOpOC
 
-      // get node suggested parameters
-      const params = await this.algodClient.getTransactionParams().do()
-      params.fee = this.minFee
-      params.flatFee = true
+    // get node suggested parameters
+    const params = await this.algodClient.getTransactionParams().do()
+    params.fee = this.minFee
+    params.flatFee = true
 
-      if (!skipCompile) {
-        await this.compileApprovalProgram(pcci)
-        await this.compileClearProgram(pcci)
-      }
-
-      // create unsigned transaction
-      const txApp = algosdk.makeApplicationCreateTxn(
-        sender, params, onComplete,
-        pcci.compiledApproval.bytes,
-        pcci.compiledClearState.bytes,
-        pcci.schema.localInts,
-        pcci.schema.localBytes,
-        pcci.schema.globalInts,
-        pcci.schema.globalBytes, appArgs
-      )
-      const txId = txApp.txID().toString()
-
-      // Sign the transaction
-      const txAppSigned = signCallback(sender, txApp)
-
-      // Submit the transaction
-      await this.algodClient.sendRawTransaction(txAppSigned).do()
-      return txId
+    if (!skipCompile) {
+      await this.compileApprovalProgram(pcci)
+      await this.compileClearProgram(pcci)
     }
 
-    /**
+    // create unsigned transaction
+    const txApp = algosdk.makeApplicationCreateTxn(
+      sender, params, onComplete,
+      pcci.compiledApproval.bytes,
+      pcci.compiledClearState.bytes,
+      pcci.schema.localInts,
+      pcci.schema.localBytes,
+      pcci.schema.globalInts,
+      pcci.schema.globalBytes, appArgs
+    )
+    const txId = txApp.txID().toString()
+
+    // Sign the transaction
+    const txAppSigned = signCallback(sender, txApp)
+
+    // Submit the transaction
+    await this.algodClient.sendRawTransaction(txAppSigned).do()
+    return txId
+  }
+
+  /**
        * Create the Pricekeeper application based on the default approval and clearState programs or based on the specified files.
        * @param  {String} sender account used to sign the createApp transaction
        * @param  {String} wormholeCoreAppId The application id of the Wormhole Core program associated.
        * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
        * @return {String} transaction id of the created application
        */
-    async createPricecasterApp (sender: string, wormholeCore: number, signCallback: SignCallback): Promise<any> {
-      return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback)
-    }
+  async createPricecasterApp (sender: string, wormholeCore: number, signCallback: SignCallback): Promise<any> {
+    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback)
+  }
 
-    /**
+  /**
        * Create the Mapper application based on the default approval and clearState programs or based on the specified files.
        * @param  {String} sender account used to sign the createApp transaction
        * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
        * @return {String} transaction id of the created application
        */
-    async createMapperApp(sender: string, signCallback: SignCallback): Promise<any> {
-      return this.createApp(sender, MAPPER_CI, [], signCallback)
-    }
+  async createMapperApp (sender: string, signCallback: SignCallback): Promise<any> {
+    return this.createApp(sender, MAPPER_CI, [], signCallback)
+  }
 
-    /**
+  /**
      * Internal function.
      * Call application specifying args and accounts.
      * @param  {String} sender caller address
@@ -353,138 +352,137 @@ export default class PricecasterLib {
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
      * @return {String} transaction id of the transaction
      */
-    async callApp (sender: string, 
-        pcci: ContractInfo, 
-        appArgs: Uint8Array[], 
-        appAccounts: string[], 
-        signCallback: SignCallback): Promise<any> {
-      // get node suggested parameters
-      const params = await this.algodClient.getTransactionParams().do()
+  async callApp (sender: string,
+    pcci: ContractInfo,
+    appArgs: Uint8Array[],
+    appAccounts: string[],
+    signCallback: SignCallback): Promise<any> {
+    // get node suggested parameters
+    const params = await this.algodClient.getTransactionParams().do()
 
-      params.fee = this.minFee
-      params.flatFee = true
+    params.fee = this.minFee
+    params.flatFee = true
 
-      // create unsigned transaction
-      const txApp = algosdk.makeApplicationNoOpTxn(sender, params, pcci.appId, appArgs, appAccounts.length === 0 ? undefined : appAccounts)
-      const txId = txApp.txID().toString()
+    // create unsigned transaction
+    const txApp = algosdk.makeApplicationNoOpTxn(sender, params, pcci.appId, appArgs, appAccounts.length === 0 ? undefined : appAccounts)
+    const txId = txApp.txID().toString()
 
-      // Sign the transaction
-      const txAppSigned = signCallback(sender, txApp)
+    // Sign the transaction
+    const txAppSigned = signCallback(sender, txApp)
 
-      // Submit the transaction
-      await this.algodClient.sendRawTransaction(txAppSigned).do()
+    // Submit the transaction
+    await this.algodClient.sendRawTransaction(txAppSigned).do()
 
-      return txId
-    }
+    return txId
+  }
 
-    /**
+  /**
      * ClearState sender. Remove all the sender associated local data.
      * @param  {String} sender account to ClearState
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
      * @return {[String]} transaction id of one of the transactions of the group
      */
-    async clearApp(sender: string, signCallback: SignCallback, pcci: ContractInfo): Promise<string> {
-      // get node suggested parameters
-      const params = await this.algodClient.getTransactionParams().do()
+  async clearApp (sender: string, signCallback: SignCallback, pcci: ContractInfo): Promise<string> {
+    // get node suggested parameters
+    const params = await this.algodClient.getTransactionParams().do()
 
-      params.fee = this.minFee
-      params.flatFee = true
+    params.fee = this.minFee
+    params.flatFee = true
 
-      let appId = pcci.appId
+    const appId = pcci.appId
 
-      // create unsigned transaction
-      const txApp = algosdk.makeApplicationClearStateTxn(sender, params, appId)
-      const txId = txApp.txID().toString()
+    // create unsigned transaction
+    const txApp = algosdk.makeApplicationClearStateTxn(sender, params, appId)
+    const txId = txApp.txID().toString()
 
-      // Sign the transaction
-      const txAppSigned = signCallback(sender, txApp)
+    // Sign the transaction
+    const txAppSigned = signCallback(sender, txApp)
 
-      // Submit the transaction
-      await this.algodClient.sendRawTransaction(txAppSigned).do()
+    // Submit the transaction
+    await this.algodClient.sendRawTransaction(txAppSigned).do()
 
-      return txId
-    }
+    return txId
+  }
 
-    /**
+  /**
       * Permanent delete the application.
       * @param  {String} sender owner account
       * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
       * @param  {Function} applicationId use this application id instead of the one set
       * @return {String}      transaction id of one of the transactions of the group
       */
-    async deleteApp (sender: string, signCallback: SignCallback, pcci: ContractInfo): Promise<any> {
-      // get node suggested parameters
-      const params = await this.algodClient.getTransactionParams().do()
+  async deleteApp (sender: string, signCallback: SignCallback, pcci: ContractInfo): Promise<any> {
+    // get node suggested parameters
+    const params = await this.algodClient.getTransactionParams().do()
 
-      params.fee = this.minFee
-      params.flatFee = true
+    params.fee = this.minFee
+    params.flatFee = true
 
-          // create unsigned transaction
-      const txApp = algosdk.makeApplicationDeleteTxn(sender, params, pcci.appId)
-      const txId = txApp.txID().toString()
+    // create unsigned transaction
+    const txApp = algosdk.makeApplicationDeleteTxn(sender, params, pcci.appId)
+    const txId = txApp.txID().toString()
 
-      // Sign the transaction
-      const txAppSigned = signCallback(sender, txApp)
+    // Sign the transaction
+    const txAppSigned = signCallback(sender, txApp)
 
-      // Submit the transaction
-      await this.algodClient.sendRawTransaction(txAppSigned).do()
+    // Submit the transaction
+    await this.algodClient.sendRawTransaction(txAppSigned).do()
 
-      return txId
-    }
+    return txId
+  }
 
-    /**
+  /**
      * Helper function to wait until transaction txId is included in a block/round.
      * @param  {String} txId transaction id to wait for
      * @return {VOID} VOID
      */
-    async waitForConfirmation(txId: string): Promise<any> {
-      const status = (await this.algodClient.status().do())
-      let lastRound = status['last-round']
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const pendingInfo = await this.algodClient.pendingTransactionInformation(txId).do()
-        if (pendingInfo['confirmed-round'] !== null && pendingInfo['confirmed-round'] > 0) {
-          // Got the completed Transaction
+  async waitForConfirmation (txId: string): Promise<any> {
+    const status = (await this.algodClient.status().do())
+    let lastRound = status['last-round']
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const pendingInfo = await this.algodClient.pendingTransactionInformation(txId).do()
+      if (pendingInfo['confirmed-round'] !== null && pendingInfo['confirmed-round'] > 0) {
+        // Got the completed Transaction
 
-          return pendingInfo['confirmed-round']
-        }
-        lastRound += 1
-        await this.algodClient.statusAfterBlock(lastRound).do()
+        return pendingInfo['confirmed-round']
       }
+      lastRound += 1
+      await this.algodClient.statusAfterBlock(lastRound).do()
     }
+  }
 
-    /**
+  /**
      * Helper function to wait until transaction txId is included in a block/round
      * and returns the transaction response associated to the transaction.
      * @param  {String} txId transaction id to get transaction response
      * @return {Object}      returns an object containing response information
      */
-    async waitForTransactionResponse(txId: string): Promise<any> {
-      // Wait for confirmation
-      await this.waitForConfirmation(txId)
+  async waitForTransactionResponse (txId: string): Promise<any> {
+    // Wait for confirmation
+    await this.waitForConfirmation(txId)
 
-      // display results
-      return this.algodClient.pendingTransactionInformation(txId).do()
-    }
+    // display results
+    return this.algodClient.pendingTransactionInformation(txId).do()
+  }
 
-    // /**
-    //  * Opt-in to the dynamic-storage LogicSig.
-    //  * 
-    //  */
-    // this.optinToDynStoreLSig() = async function (sender, coreId, idx, emitter) {
-    //   const appEscrow = algosdk.getApplicationAddress(coreId)
-    //   program = program.replace(/TMPL_ADDR_IDX/, idx)
-    //   program = program.replace(/TMPL_EMITTER_ID/, emitter)
-    //   program = program.replace(/TMPL_SEED_AMT/, 1002000)
-    //   program = program.replace(/TMPL_APP_ID/, coreId)
-    //   program = program.replace(/TMPL_APP_ADDRESS/, '0x' + Buffer.from(algosdk.decodeAddress(appEscrow).publicKey).toString('hex'))
-    //   await this.compileProgram(program)
+  // /**
+  //  * Opt-in to the dynamic-storage LogicSig.
+  //  *
+  //  */
+  // this.optinToDynStoreLSig() = async function (sender, coreId, idx, emitter) {
+  //   const appEscrow = algosdk.getApplicationAddress(coreId)
+  //   program = program.replace(/TMPL_ADDR_IDX/, idx)
+  //   program = program.replace(/TMPL_EMITTER_ID/, emitter)
+  //   program = program.replace(/TMPL_SEED_AMT/, 1002000)
+  //   program = program.replace(/TMPL_APP_ID/, coreId)
+  //   program = program.replace(/TMPL_APP_ADDRESS/, '0x' + Buffer.from(algosdk.decodeAddress(appEscrow).publicKey).toString('hex'))
+  //   await this.compileProgram(program)
 
+  // }
+  // }
 
-    // }
-    // }
-
-    /**
+  /**
      * Call the Mapper contract to add a new Key-to-price+productId relationship.
      * @param sender The sender contract
      * @param asaId The ASA ID.
@@ -493,59 +491,59 @@ export default class PricecasterLib {
      * @returns A promise for the transaction identifier.
      */
 
-    async setMappingEntry (sender: string, asaId: number, key: Uint8Array, signCallback: SignCallback): Promise<string> {
-      if (!algosdk.isValidAddress(sender)) {
-        throw new Error('Invalid sender address: ' + sender)
-      }
-      const appArgs = []
-      appArgs.push(new Uint8Array(Buffer.from('store')), algosdk.encodeUint64(asaId), key)
-      return await this.callApp(sender, MAPPER_CI, appArgs, [], signCallback)
+  async setMappingEntry (sender: string, asaId: number, key: Uint8Array, signCallback: SignCallback): Promise<string> {
+    if (!algosdk.isValidAddress(sender)) {
+      throw new Error('Invalid sender address: ' + sender)
     }
+    const appArgs = []
+    appArgs.push(new Uint8Array(Buffer.from('store')), algosdk.encodeUint64(asaId), key)
+    return await this.callApp(sender, MAPPER_CI, appArgs, [], signCallback)
+  }
 
-    /**
+  /**
      * Starts a begin...commit section for commiting grouped transactions.
      */
-    beginTxGroup  () {
-      const gid: string = crypto.randomBytes(16).toString('hex')
-      this.groupTxSet[gid] = []
-      return gid
-    }
+  beginTxGroup () {
+    const gid: string = crypto.randomBytes(16).toString('hex')
+    this.groupTxSet[gid] = []
+    return gid
+  }
 
-    /**
+  /**
        * Adds a transaction to the group.
        * @param {} tx Transaction to add.
        */
-    addTxToGroup  (gid: string, tx: any) {
-      if (this.groupTxSet[gid] === undefined) {
-        throw new Error('unknown tx group id')
-      }
-      this.groupTxSet[gid].push(tx)
+  addTxToGroup (gid: string, tx: any) {
+    if (this.groupTxSet[gid] === undefined) {
+      throw new Error('unknown tx group id')
     }
+    this.groupTxSet[gid].push(tx)
+  }
 
-    /**
+  /**
      * @param {*} sender The sender account.
      * @param {function} signCallback The sign callback routine.
      * @returns Transaction id.
      */
-    async commitTxGroup(gid: string, sender: string, signCallback: SignCallback) {
-      if (this.groupTxSet[gid] === undefined) {
-        throw new Error('unknown tx group id')
-      }
-      algosdk.assignGroupID(this.groupTxSet[gid])
+  async commitTxGroup (gid: string, sender: string, signCallback: SignCallback) {
+    if (this.groupTxSet[gid] === undefined) {
+      throw new Error('unknown tx group id')
+    }
+    algosdk.assignGroupID(this.groupTxSet[gid])
 
-      // Sign the transactions
-      const signedTxns = []
-      for (const tx of this.groupTxSet[gid]) {
-        signedTxns.push(signCallback(sender, tx))
-      }
-
-      // Submit the transaction
-      const tx = await this.algodClient.sendRawTransaction(signedTxns).do()
-      delete this.groupTxSet[gid]
-      return tx.txId
+    // Sign the transactions
+    const signedTxns = []
+    for (const tx of this.groupTxSet[gid]) {
+      signedTxns.push(signCallback(sender, tx))
     }
 
-    /**
+    // Submit the transaction
+    const tx = await this.algodClient.sendRawTransaction(signedTxns).do()
+    delete this.groupTxSet[gid]
+    return tx.txId
+  }
+
+  /**
      * @param {*} sender The sender account.
      * @param {*} programBytes Compiled program bytes.
      * @param {*} totalSignatureCount Total signatures present in the VAA.
@@ -554,98 +552,98 @@ export default class PricecasterLib {
      * @param {*} signCallback The signing callback function to use in the last TX of the group.
      * @returns Transaction id.
      */
-    async commitVerifyTxGroup(gid: string, programBytes: Uint8Array, totalSignatureCount: number,
-      sigSubsets: any[], lastTxSender: string, signCallback: SignCallback): Promise<string> {
-      if (this.groupTxSet[gid] === undefined) {
-        throw new Error('unknown group id')
-      }
-      algosdk.assignGroupID(this.groupTxSet[gid])
-      const signedGroup = []
-      let i = 0
-      for (const tx of this.groupTxSet[gid]) {
-        // All transactions except last must be signed by stateless code.
+  async commitVerifyTxGroup (gid: string, programBytes: Uint8Array, totalSignatureCount: number,
+    sigSubsets: any[], lastTxSender: string, signCallback: SignCallback): Promise<string> {
+    if (this.groupTxSet[gid] === undefined) {
+      throw new Error('unknown group id')
+    }
+    algosdk.assignGroupID(this.groupTxSet[gid])
+    const signedGroup = []
+    let i = 0
+    for (const tx of this.groupTxSet[gid]) {
+      // All transactions except last must be signed by stateless code.
 
-        // console.log(`sigSubsets[${i}]: ${sigSubsets[i])
+      // console.log(`sigSubsets[${i}]: ${sigSubsets[i])
 
-        if (i === this.groupTxSet[gid].length - 1) {
-          signedGroup.push(signCallback(lastTxSender, tx))
-        } else {
-          const lsig = new algosdk.LogicSigAccount(programBytes, [Buffer.from(sigSubsets[i], 'hex'), algosdk.encodeUint64(totalSignatureCount)])
-          const stxn = algosdk.signLogicSigTransaction(tx, lsig)
-          signedGroup.push(stxn.blob)
-        }
-        i++
+      if (i === this.groupTxSet[gid].length - 1) {
+        signedGroup.push(signCallback(lastTxSender, tx))
+      } else {
+        const lsig = new algosdk.LogicSigAccount(programBytes, [Buffer.from(sigSubsets[i], 'hex'), algosdk.encodeUint64(totalSignatureCount)])
+        const stxn = algosdk.signLogicSigTransaction(tx, lsig)
+        signedGroup.push(stxn.blob)
       }
-
-      // Submit the transaction
-      let tx: any
-      try {
-        tx = await this.algodClient.sendRawTransaction(signedGroup).do()
-      } catch (e) {
-        if (this.dumpFailedTx) {
-          const id = tx ? tx.txId : Date.now().toString()
-          const filename = `${this.dumpFailedTxDirectory}/failed-${id}.stxn`
-          if (fs.existsSync(filename)) {
-            fs.unlinkSync(filename)
-          }
-          for (let i = 0; i < signedGroup.length; ++i) {
-            fs.appendFileSync(filename, signedGroup[i])
-          }
-        }
-        throw e
-      }
-      delete this.groupTxSet[gid]
-      return tx.txId
+      i++
     }
 
-    // /**
-    //  * VAA Processor: Add a verification step to a transaction group.
-    //  * @param {*} sender The sender account (typically the VAA verification stateless program)
-    //  * @param {*} payload The VAA payload in hex encoded string.
-    //  * @param {*} gksubset An hex string containing the keys for the guardian subset in this step.
-    //  * @param {*} totalguardians The total number of known guardians.
-    //  */
-    // function addVerifyTx  (gid: string, sender: string, params: any, payload: string, gksubset: string[], totalguardians: string): string {
-    //   if (this.groupTxSet[gid] === undefined) {
-    //     throw new Error('unknown group id')
-    //   }
-    //   const appArgs = []
-    //   appArgs.push(new Uint8Array(Buffer.from('verify')),
-    //     new Uint8Array(Buffer.from(gksubset.join(''), 'hex')),
-    //     algosdk.encodeUint64(parseInt(totalguardians)))
+    // Submit the transaction
+    let tx: any
+    try {
+      tx = await this.algodClient.sendRawTransaction(signedGroup).do()
+    } catch (e) {
+      if (this.dumpFailedTx) {
+        const id = tx ? tx.txId : Date.now().toString()
+        const filename = `${this.dumpFailedTxDirectory}/failed-${id}.stxn`
+        if (fs.existsSync(filename)) {
+          fs.unlinkSync(filename)
+        }
+        for (let i = 0; i < signedGroup.length; ++i) {
+          fs.appendFileSync(filename, signedGroup[i])
+        }
+      }
+      throw e
+    }
+    delete this.groupTxSet[gid]
+    return tx.txId
+  }
 
-    //   const tx = algosdk.makeApplicationNoOpTxn(sender,
-    //     params,
-    //     ContractInfo.wormholeCore.appId,
-    //     appArgs, undefined, undefined, undefined,
-    //     new Uint8Array(Buffer.from(payload, 'hex')))
-    //   this.groupTxSet[gid].push(tx)
+  // /**
+  //  * VAA Processor: Add a verification step to a transaction group.
+  //  * @param {*} sender The sender account (typically the VAA verification stateless program)
+  //  * @param {*} payload The VAA payload in hex encoded string.
+  //  * @param {*} gksubset An hex string containing the keys for the guardian subset in this step.
+  //  * @param {*} totalguardians The total number of known guardians.
+  //  */
+  // function addVerifyTx  (gid: string, sender: string, params: any, payload: string, gksubset: string[], totalguardians: string): string {
+  //   if (this.groupTxSet[gid] === undefined) {
+  //     throw new Error('unknown group id')
+  //   }
+  //   const appArgs = []
+  //   appArgs.push(new Uint8Array(Buffer.from('verify')),
+  //     new Uint8Array(Buffer.from(gksubset.join(''), 'hex')),
+  //     algosdk.encodeUint64(parseInt(totalguardians)))
 
-    //   return tx.txID()
-    // }
+  //   const tx = algosdk.makeApplicationNoOpTxn(sender,
+  //     params,
+  //     ContractInfo.wormholeCore.appId,
+  //     appArgs, undefined, undefined, undefined,
+  //     new Uint8Array(Buffer.from(payload, 'hex')))
+  //   this.groupTxSet[gid].push(tx)
 
-    // /**
-    //  * Pricekeeper-V2: Add store price transaction to TX Group.
-    //  * @param {*} gid The  TX group identifier generated with BeginGroup call.
-    //  * @param {*} sender The sender account (typically the VAA verification stateless program)
-    //  * @param {*} params The network TX parameters.
-    //  * @param {*} payload The VAA payload, hex-encoded.
-    //  */
-    // function addPriceStoreTx  (gid, sender, params, payload) {
-    //   if (this.groupTxSet[gid] === undefined) {
-    //     throw new Error('unknown group id')
-    //   }
-    //   const appArgs = []
-    //   appArgs.push(new Uint8Array(Buffer.from('store')),
-    //     new Uint8Array(Buffer.from(payload, 'hex')))
+  //   return tx.txID()
+  // }
 
-    //   const tx = algosdk.makeApplicationNoOpTxn(sender,
-    //     params,
-    //     ContractInfo.pricekeeper.appId,
-    //     appArgs)
-    //   this.groupTxSet[gid].push(tx)
+  // /**
+  //  * Pricekeeper-V2: Add store price transaction to TX Group.
+  //  * @param {*} gid The  TX group identifier generated with BeginGroup call.
+  //  * @param {*} sender The sender account (typically the VAA verification stateless program)
+  //  * @param {*} params The network TX parameters.
+  //  * @param {*} payload The VAA payload, hex-encoded.
+  //  */
+  // function addPriceStoreTx  (gid, sender, params, payload) {
+  //   if (this.groupTxSet[gid] === undefined) {
+  //     throw new Error('unknown group id')
+  //   }
+  //   const appArgs = []
+  //   appArgs.push(new Uint8Array(Buffer.from('store')),
+  //     new Uint8Array(Buffer.from(payload, 'hex')))
 
-    //   return tx.txID()
-    // }
-  //}
+  //   const tx = algosdk.makeApplicationNoOpTxn(sender,
+  //     params,
+  //     ContractInfo.pricekeeper.appId,
+  //     appArgs)
+  //   this.groupTxSet[gid].push(tx)
+
+  //   return tx.txID()
+  // }
+  // }
 }
