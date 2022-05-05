@@ -218,57 +218,39 @@ Use the deployment tools in `tools` subdirectory.
 For example, using `deploy` with sample output: 
 
 ```
-$ npx ts-node tools\deploy.ts tools\gkeys.test 1000  OPDM7ACAW64Q4VBWAL77Z5SHSJVZZ44V3BAN7W44U43SUXEOUENZMZYOQU testnet keys\owner.key
+$ npx ts-node tools\deploy.ts 1054 XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM dev keys\owner.key
 
 Pricecaster v2 Apps Deployment Tool
-
 Copyright 2022 Wormhole Project Contributors
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
 Parameters for deployment:
-From: OPDM7ACAW64Q4VBWAL77Z5SHSJVZZ44V3BAN7W44U43SUXEOUENZMZYOQU
-Network: testnet
-Guardian expiration time: 1000
-Guardian Keys: (1) 13947Bd48b18E53fdAeEe77F3473391aC727C638
+From: XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM
+Network: dev
 
 Enter YES to confirm parameters, anything else to abort. YES
-Compiling programs ...
-
-,VAA Processor Program
+,Pricecaster V2 Program, (c) 2022 Wormhole Project Contributors
 Compiling approval program...
-Written to teal/wormhole/build/vaa-processor-approval.teal
+Written to teal/build/pricecaster-v2-approval.teal
 Compiling clear state program...
-Written to teal/wormhole/build/vaa-processor-clear.teal
+Written to teal/build/pricecaster-v2-clear.teal
 ,
-,Pricekeeper V2 Program
-Compiling approval program...
-Written to teal/wormhole/build/pricekeeper-v2-approval.teal
-Compiling clear state program...
-Written to teal/wormhole/build/pricekeeper-v2-clear.teal
-,
-Creating VAA Processor...
-txId: WS7GE5A6YAADHVNH5OU337MK7T325AE2GML5S3RWK2VTNCQ23HWA
-Deployment App Id: 52438261
 Creating Pricekeeper V2...
-txId: FICS3HFALLJTMFGEVC65IQ67NCYRJATR32QWZS5VMKGEXHBJJUVA
-Deployment App Id: 52438280
-Setting VAA Processor authid parameter...
-txId: 5NVJGG32DRWAURD3LUHPELJAZTFMM6HLAJPPGNPXNDC5FJFDNVUQ
-Compiling verify VAA stateless code...
-,VAA Verify Stateless Program
-Compiling...
-Written to teal/wormhole/build/vaa-verify.teal
+txId: VDB34IJPAKBA4S3VBYJ6B6MMSCOWHLUYETLHEXPWJOS2QJ4PPD6Q
+Deployment App Id: 1100
+,ASA ID Mapper Program, (c) 2022 Wormhole Project Contributors
+Compiling approval program...
+Written to teal/build/mapper-approval.teal
+Compiling clear state program...
+Written to teal/build/mapper-clear.teal
 ,
-Stateless program address:  KRNYKVVWZDCNOPLL63ZHFOKG2IIY7REBYTPVR5TJLD67JR6FMRJXYW63TI
-Setting VAA Processor stateless code...
-txId: 5NVJGG32DRWAURD3LUHPELJAZTFMM6HLAJPPGNPXNDC5FJFDNVUQ
-Writing deployment results file DEPLOY-1639769594911...
-Writing stateless code binary file VAA-VERIFY-1639769594911.BIN...
+Creating ASA ID Mapper...
+txId: OQC7GKFRLLPIRGB35ZPYAP2XBYJEKJEGJ4S3S42RLPUUUPFQMILA
+Deployment App Id: 1101
+Compiling verify VAA stateless code...
+,,
+Stateless program address:  5PKAA6VERF6XZQAOJVKST262JKLKIYP3EGFO54ZD7YPUV7TRQOZ2BN6SPA
+Writing deployment results file DEPLOY-1651761990771...
+Writing stateless code binary file VAA-VERIFY-1651761990771.BIN...
 Bye.
 ```
 
