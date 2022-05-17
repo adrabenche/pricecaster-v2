@@ -281,6 +281,7 @@ The following settings are available:
 | pyth.chainId | The chainId of the Pyth data source |
 | pyth.emitterAddress | The address (in hex) of the Pyth emitter |
 | wormhole.spyServiceHost | The URI to listen for VAAs coming from the guardiand Spy service |
+| symbols.sourceNetwork | The Pyth price information source (mainnet-beta, devnet or testnet), this is used to solve symbol to textual representation and to update the Mapper |
 
 ### Diagnosing failed transactions
 
@@ -391,7 +392,7 @@ You can bootstrap the dockerfile with:
 docker run -ti guardian-mainnet --nodeKey /tmp/node.key --spyRPC [::]:7074 --network /wormhole/mainnet/2 --bootstrap /dns4/wormhole-mainnet-v2-bootstrap.certus.one/udp/8999/quic/p2p/12D3KooWQp644DK27fd3d4Km3jr7gHiuJJ5ZGmy8hH4py7fP4FP7
 ```
 
-For deployment, use `-p 7074` to expose ports; remove `-ti` to leave the container running in the background.
+For deployment, use `-p 7074` to expose ports; remove `-ti` and add `-d` to leave the container running in the background. (detached mode)
 
 
 ## Appendix
@@ -404,87 +405,42 @@ If account X is the stateless program address, this means that this account is w
 
 
 
-### Sample Pyth VAA
+### Sample Pyth VAA payload
 
-This is a sample signed VAA from Pyth, which streams batched price data.
+See the documentation `doc` subdirectory for format information.
+
+The following is a real world sample for a payload. For brevity purposes, only the first attestation bytes are dumped.
 
 ```
-01                version
-00000000          guardian-set-index
-01                signature-count
-00                sig index 0
-5bf8170ce643e98f5f43d86dce130b9ad7ff3d01e4ec59489f34619ca324df8264b7aca4d412caafea247aafaa36ccd3d028098402cc5bf9a33f52bfc867c1a601   sig 0
-61a5ff9a          timestamp
-00000859          nonce 
-0001              chain-id
-3afda841c1f43dd7d546c8a581ba1f92a139f4133f9f6ab095558f6a359df5d4      emitter-address
-0000000000000012  sequence
-20                consistency-level
-
-payload:
-
-50325748		P2W_MAGIC (p2wh)
-0002        P2W_FORMAT_VERSION
-02				  Payload ID
-0005			  # of Price attestations in this batch
-0096        Size in bytes of each attestation
-
-Attestation follows: 
-
-50325748
-0002
-01
-1dc9fc22544655b453008cc68559639a8f74d584d94f84ac945b36c957afd9db
-73dc009953c83c944690037ea477df627657f45c14f16ad3a61089c5a3f9f4f2
-01
-000000000630a010
-fffffff8
-000000000623c88e
-000000009fbfbc1f
-000000009b155c1f00000000000127a100000000755eafbc000000009b155c1f000000000000c350010000000000620a4ecb
-
-50325748
-0002
-01
-0264e3935b6fb12d2c5d92d75adb8175ca5b454c7d7ec279b0d27647ee0fd33f
-08f781a893bc9340140c5f89c8a96f438bcfae4d1474cc0f688e3a52892c7318
-0100000000054a37b0fffffff8000000000541380d00000000a138fc3f00000000b6dfdb3f000000000000fd5600000000769a3b9c00000000b6dfdb3f000000000000c350010000000000620a4ecb
-
-50325748
-0002
-01
-e0b43fa07b9318a2de306080fc8946494ae30c6af9b12b4dc99f1847718e6341a
-fcc9a5bb5eefd55e12b6f0b4c8e6bccf72b785134ee232a5d175afd082e883201
-0000000001011868fffffffb00000000010233e2000000005821445f000000003414d83d00000000000054850000000070b122fc000000003414d83d000000000000848d000000000000620a4ecb
-
-50325748
-0002
-01
-101be52cc7068adf747f67759e86b478c6e90f81b05a8121d080cfa0a5a9a0736
-de025a4cf28124f8ea6cb8085f860096dbc36d9c40002e221fc449337e065b201
-0000000137791750fffffff8000000013567604800000001450fc47f000000003e9efade00000000001cc89e0000000076204e7c000000003e9efade000000000026e8f0010000000000620a4ecb
-
-50325748
-0002
-01
-a4b430a1ce2c68685e0c0e54a60340854fe15ce154e2f0b39927968e447cf93b1
-fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c158801
-0000000005f67d40fffffff80000000005f67804000000018773c2df00000001874d089f0000000000007513000000007547c2fc00000001874d089f0000000000007530010000000000620a4ecb
-
-230abfe0ec3b460bd55fc4fb36356716329915145497202b8eb8bf1af6a0a3b9      product_id
-fe650f0367d4a7ef9815a593ea15d36593f0643aaaf0149bb04be67ab851decd      price_id
-01                price_type
-0000002f17254388  price
-fffffff7          exponent
-0000002eed73d900  twap value
-0000000070d3b43f  twap numerator for next upd
-0000000037faa03d  twap denom for next upd
-000000000e9e5551  twac value
-00000000894af11c  twac numerator for next upd
-0000000037faa03d  twac denom for next upd
-000000000dda6eb8  confidence
-01                status
-00                corporate_act
-0000000061a5ff9a  timestamp (based on Solana contract call time)
+----------------------------------------------------------------------------------------
+50325748			Header (P2WH)
+0003				Major Version (3)
+0000				Minor Version (0)
+0001				Size of remaining header fields (constant 1)
+02				    Payload Id.  BatchPriceAttestation is 2.
+----------------------------------------------------------------------------------------
+0005                Num of Attestations
+0095c               Size in bytes of each attestation
+----------------------------------------------------------------------------------------
+c67940be40e0cc7ffaa1acb08ee3fab30955a197da1ec297ab133d4d43d86ee6	product_id
+ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace    price_id
+0000002f102f53c0													price
+0000000005204180													conf
+fffffff8															exponent
+0000002fb05b7a40													ema_price
+00000000064a7e98													ema_conf
+01																	status
+00000015															num_publishers
+00000020															max_num_publishers
+000000006283efc2													attestation_time
+000000006283efc2													publish_time
+000000006283efc1													prev_publish_time
+0000002f102f53c0													prev_price
+0000000004f34f40													prev_conf
+-----------------------------------------------------------------------------------------
+.
+.
+(remaining attestations follow)
+.
+.
 ```
-
