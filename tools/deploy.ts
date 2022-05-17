@@ -82,7 +82,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   const binaryFileName = 'VAA-VERIFY-' + dt + '.BIN'
 
   console.log(`Writing deployment results file ${resultsFileName}...`)
-  fs.writeFileSync(resultsFileName, `wormholeCoreAppId: ${coreId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}\nasaIdMapperAppId: ${mapperAppId}'`)
+  fs.writeFileSync(resultsFileName, `wormholeCoreAppId: ${coreId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}'\nasaIdMapperAppId: ${mapperAppId}`)
 
   console.log(`Writing stateless code binary file ${binaryFileName}...`)
   fs.writeFileSync(binaryFileName, compiledVerifyProgram.bytes)
