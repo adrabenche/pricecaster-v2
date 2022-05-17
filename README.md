@@ -347,6 +347,53 @@ Check the `package.json` file for `npm run start-xxx`  automated commands.
 
 Backend tests will come shortly.
 
+## Guardian Spy Setup
+
+The guardiand daemon in Spy mode can be bootstrapped using Docker.  An appropiate dockerfile for the `mainnet-beta` network at the time of this writing is:
+
+```
+FROM docker.io/golang:1.17.0-alpine as builder
+
+RUN apk add --no-cache git gcc linux-headers alpine-sdk bash
+
+WORKDIR /app
+RUN git clone https://github.com/certusone/wormhole.git
+
+WORKDIR /app/wormhole/tools
+RUN CGO_ENABLED=0 ./build.sh
+
+WORKDIR /app/wormhole
+RUN tools/bin/buf lint && tools/bin/buf generate
+
+WORKDIR /app/wormhole/node/tools
+RUN go build -mod=readonly -o /dlv github.com/go-delve/delve/cmd/dlv
+
+WORKDIR /app/wormhole/node
+RUN go build -race -gcflags="all=-N -l" -mod=readonly -o /guardiand github.com/certusone/wormhole/node
+
+FROM docker.io/golang:1.17.0-alpine
+
+WORKDIR /app
+COPY --from=builder /guardiand /app/guardiand
+
+ENV PATH="/app:${PATH}"
+RUN addgroup -S pyth -g 10001 && adduser -S pyth -G pyth -u 10001
+RUN chown -R pyth:pyth .
+USER pyth
+
+ENTRYPOINT [ "guardiand", "spy", "--nodeKey", "/tmp/node.key" ]
+
+```
+
+You can bootstrap the dockerfile with: 
+
+```
+docker run -ti guardian-mainnet --nodeKey /tmp/node.key --spyRPC [::]:7074 --network /wormhole/mainnet/2 --bootstrap /dns4/wormhole-mainnet-v2-bootstrap.certus.one/udp/8999/quic/p2p/12D3KooWQp644DK27fd3d4Km3jr7gHiuJJ5ZGmy8hH4py7fP4FP7
+```
+
+For deployment, use `-p 7074` to expose ports; remove `-ti` to leave the container running in the background.
+
+
 ## Appendix
 
 ### Common errors
@@ -354,6 +401,7 @@ Backend tests will come shortly.
 **TransactionPool.Remember: transaction XMGXHGC4GVEHQD2T7MZDKTFJWFRY5TFXX2WECCXBWTOZVHC7QLAA: overspend, account X**
 
 If account X is the stateless program address, this means that this account is without enough balance to pay the fees for each TX group.
+
 
 
 ### Sample Pyth VAA
