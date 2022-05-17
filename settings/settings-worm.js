@@ -37,14 +37,20 @@ module.exports = {
     ownerKeyFile: './keys/owner.key'
   },
   pyth: {
+    // Devnet
+    //
+    // chainId: 1,emitterAddress: 'f346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
+    //
+    // Mainnet-beta
+    //
     chainId: 1,
-    emitterAddress: 'f346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
+    emitterAddress: 'ec7372995d5cc8732397fb0ad35c0121e0eaa90d26f828a534cab54391b3a4f5'
   },
   wormhole: {
-    spyServiceHost: 'natasha.randlabs.io:7073'
+    spyServiceHost: 'natasha.randlabs.io:7074'
   },
   symbols: {
-    sourceNetwork: 'devnet'
+    sourceNetwork: 'mainnet-beta'
   },
   debug: {
     skipPublish: true

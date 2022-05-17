@@ -33,7 +33,11 @@ import { IPriceFetcher } from './IPriceFetcher'
 import * as Logger from '@randlabs/js-logger'
 import { PythSymbolInfo } from 'backend/engine/SymbolInfo'
 import { base58 } from 'ethers/lib/utils'
-const { extract3 } = require('../../tools/app-tools')
+import tools from '../../tools/app-tools'
+
+const SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION = 3
+const SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION = 0
+const PYTH_ATTESTATION_PAYLOAD_ID = 2
 
 export class WormholePythPriceFetcher implements IPriceFetcher {
   private client: SpyRPCServiceClient
@@ -59,16 +63,16 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   async start () {
     this.coreWasm = await importCoreWasm()
     // eslint-disable-next-line camelcase
-    this.stream = await subscribeSignedVAA(this.client,
-      {
-        filters:
-          [{
-            emitterFilter: {
-              chainId: this.pythChainId,
-              emitterAddress: this.pythEmitterAddress.s
-            }
-          }]
-      })
+    const filter = {
+      filters:
+        [{
+          emitterFilter: {
+            chainId: this.pythChainId,
+            emitterAddress: this.pythEmitterAddress.s
+          }
+        }]
+    }
+    this.stream = await subscribeSignedVAA(this.client, {})
 
     this.stream.on('data', (data: { vaaBytes: Buffer }) => {
       try {
@@ -102,49 +106,55 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   }
 
   private async onPythData (vaaBytes: Buffer) {
-    // console.log(vaaBytes.toString('hex'))
     const v: VAA = this.coreWasm.parse_vaa(new Uint8Array(vaaBytes))
     const payload = Buffer.from(v.payload)
+
     const header = payload.readInt32BE(0)
-    const version = payload.readInt16BE(4)
+    const major_version = payload.readInt16BE(4)
+    const minor_version = payload.readInt16BE(6)
 
     if (header === 0x50325748) {
-      if (version === 2) {
-        const payloadId = payload.readUInt8(6)
-        if (payloadId === 2) {
-          const numAttest = payload.readInt16BE(7)
-          const sizeAttest = payload.readInt16BE(9)
+      console.log(Buffer.from(v.emitter_address).toString('hex'), v.emitter_chain)
+      if (major_version === SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION) {
+        if (minor_version !== SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION) {
+          Logger.warn(`Version for this payload is ${major_version}.${minor_version}, while we support ${SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION}.${SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION}. Minor version changes shouldnt break parser. Contact administrator or dev team if any problem arises.`)
+        }
+        const hdr_size = payload.readInt16BE(8)
+        const payloadId = payload.readUInt8(10)
+        if (hdr_size === 1 && payloadId === PYTH_ATTESTATION_PAYLOAD_ID) {
+          const numAttest = payload.readInt16BE(11)
+          const sizeAttest = payload.readInt16BE(13)
 
           //
           // Extract attestations for VAA body
           //
           const attestations: PythAttestation[] = []
           for (let i = 0; i < numAttest; ++i) {
-            const attestation = extract3(payload, 11 + (i * sizeAttest), sizeAttest)
-            // console.log(i, attestation.toString('hex'))
+            const attestation = tools.extract3(payload, 15 + (i * sizeAttest), sizeAttest)
+            console.log(i, attestation.toString('hex'))
 
-            const productId = extract3(attestation, 7, 32)
-            const priceId = extract3(attestation, 7 + 32, 32)
+            const productId = tools.extract3(attestation, 0, 32)
+            const priceId = tools.extract3(attestation, 32, 32)
 
-            // console.log(base58.encode(productId))
-            // console.log(base58.encode(priceId))
+            // // console.log(base58.encode(productId))
+            // // console.log(base58.encode(priceId))
             const pythAttest: PythAttestation = {
               symbol: this.symbolInfo.getSymbol(base58.encode(productId), base58.encode(priceId)),
               productId,
               priceId,
-              price_type: attestation.readInt8(71),
-              price: attestation.readBigUInt64BE(72),
-              exponent: attestation.readInt32BE(80),
-              twap: attestation.readBigUInt64BE(84),
-              twap_num_upd: attestation.readBigUInt64BE(92),
-              twap_denom_upd: attestation.readBigUInt64BE(100),
-              twac: attestation.readBigUInt64BE(108),
-              twac_num_upd: attestation.readBigUInt64BE(116),
-              twac_denom_upd: attestation.readBigUInt64BE(124),
-              confidence: attestation.readBigUInt64BE(132),
-              status: attestation.readInt8(140),
-              corporate_act: attestation.readInt8(141),
-              timestamp: attestation.readBigUInt64BE(142)
+              price: attestation.readBigUInt64BE(64),
+              conf: attestation.readBigUInt64BE(72),
+              expo: attestation.readUInt32BE(80),
+              ema_price: attestation.readBigUInt64BE(84),
+              ema_conf: attestation.readBigUInt64BE(92),
+              status: attestation.readUInt8(100),
+              num_publishers: attestation.readUInt32BE(101),
+              max_num_publishers: attestation.readUInt32BE(105),
+              attestation_time: attestation.readBigUInt64BE(109),
+              publish_time: attestation.readBigUInt64BE(117),
+              prev_publish_time: attestation.readBigUInt64BE(125),
+              prev_price: attestation.readBigUInt64BE(133),
+              prev_conf: attestation.readBigUInt64BE(141)
             }
 
             attestations.push(pythAttest)
@@ -158,13 +168,13 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
           Logger.info(`VAA gs=${v.guardian_set_index} #sig=${v.signatures.length} ts=${v.timestamp} nonce=${v.nonce} seq=${v.sequence} clev=${v.consistency_level} payload_size=${payload.length} #attestations=${numAttest}`)
           this._hasData = true
         } else {
-          Logger.error(`Bad Pyth VAA payload Id (${payloadId}). Expected 2`)
+          Logger.error(`Bad Pyth payload payload Id (${payloadId}). Expected ${PYTH_ATTESTATION_PAYLOAD_ID}`)
         }
       } else {
-        Logger.error(`Bad Pyth VAA version (${version}). Expected 2`)
+        Logger.error(`Bad Pyth payload major version (${major_version}). Expected ${SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION}`)
       }
     } else {
-      Logger.error(`Bad VAA header (0x${header.toString(16)}). Expected 'P2WH'`)
+      Logger.error(`Bad payload header (0x${header.toString(16)}). Expected 'P2WH'`)
     }
   }
 }

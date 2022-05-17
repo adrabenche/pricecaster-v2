@@ -1,16 +1,16 @@
 import { IPublisher, PublishInfo } from '../publisher/IPublisher'
-import { PriceTicker } from '../common/priceTicker'
+import { StatusCode } from '../common/statusCodes'
 
 export class NullPublisher implements IPublisher {
   start (): void {
-    throw new Error('Method not implemented.')
   }
 
   stop (): void {
-    throw new Error('Method not implemented.')
   }
 
-  publish (tick: PriceTicker): Promise<PublishInfo> {
-    throw new Error('Method not implemented.')
+  async publish (tick: any): Promise<PublishInfo> {
+    return {
+      status: StatusCode.NULL_DATA
+    }
   }
 }

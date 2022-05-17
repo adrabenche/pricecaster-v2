@@ -28,8 +28,9 @@ import { Pricekeeper2Publisher } from '../publisher/Pricekeeper2Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { sleep } from '../common/sleep'
 import { PythSymbolInfo } from './SymbolInfo'
-import { PythData } from 'backend/common/basetypes'
+import { PythData } from '../common/basetypes'
 import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
+import { NullPublisher } from '../publisher/NullPublisher'
 const fs = require('fs')
 const algosdk = require('algosdk')
 
@@ -72,18 +73,25 @@ export class WormholeClientEngine implements IEngine {
       throw new Error('❌ Cannot read account and/or verify program source: ' + e)
     }
 
-    const publisher = new Pricekeeper2Publisher(this.settings.apps.vaaProcessorAppId,
-      this.settings.apps.priceKeeperV2AppId,
-      this.settings.apps.ownerAddress,
-      verifyProgramBinary,
-      this.settings.apps.vaaVerifyProgramHash,
-      algosdk.mnemonicToSecretKey(mnemo.toString()),
-      this.settings.algo.token,
-      this.settings.algo.api,
-      this.settings.algo.port,
-      this.settings.algo.dumpFailedTx,
-      this.settings.algo.dumpFailedTxDirectory
-    )
+    let publisher;
+
+    if (this.settings.debug?.skipPublish) {
+      Logger.warn('Using Null Publisher')
+      publisher = new NullPublisher()
+    } else {
+      publisher = new Pricekeeper2Publisher(this.settings.apps.vaaProcessorAppId,
+        this.settings.apps.priceKeeperV2AppId,
+        this.settings.apps.ownerAddress,
+        verifyProgramBinary,
+        this.settings.apps.vaaVerifyProgramHash,
+        algosdk.mnemonicToSecretKey(mnemo.toString()),
+        this.settings.algo.token,
+        this.settings.algo.api,
+        this.settings.algo.port,
+        this.settings.algo.dumpFailedTx,
+        this.settings.algo.dumpFailedTxDirectory
+      )
+    }
 
     Logger.info(`Gathering prices from Pyth network ${this.settings.symbols.sourceNetwork}...`)
     const symbolInfo = new PythSymbolInfo(this.settings.symbols.sourceNetwork)
@@ -141,7 +149,7 @@ export class WormholeClientEngine implements IEngine {
         } else {
           for (let i = 0; i < wrs!.data!.attestations!.length; ++i) {
             const att = wrs.data.attestations[i]
-            Logger.info(`     ${att.symbol}     ${att.price} ± ${att.confidence} exp: ${att.exponent} twap:${att.twap}`)
+            Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
           }
         }
         break

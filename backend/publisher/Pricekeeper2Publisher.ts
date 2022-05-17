@@ -37,7 +37,7 @@ export class Pricekeeper2Publisher implements IPublisher {
     this.dumpFailedTx = dumpFailedTx
     this.dumpFailedTxDirectory = dumpFailedTxDirectory
     this.algodClient = new algosdk.Algodv2(algoClientToken, algoClientServer, algoClientPort)
-    this.pclib = new PricecasterLib.PricecasterLib(this.algodClient)
+    this.pclib = PricecasterLib(this.algodClient, vaaProcessorOwner)
     this.pclib.setAppId('vaaProcessor', vaaProcessorAppId)
     this.pclib.setAppId('pricekeeper', priceKeeperAppId)
     this.pclib.enableDumpFailedTx(this.dumpFailedTx)

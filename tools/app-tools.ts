@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Algodv2 } from "algosdk"
+import { Algodv2 } from 'algosdk'
 import sha512 from 'js-sha512'
 import hibase32 from 'hi-base32'
 
@@ -262,7 +262,7 @@ function printAppCallDelta (transactionResponse: any) {
  * @param {*} size The size of the byte slice to extract.
  * @returns A buffer with extracted bytes.
  */
-function extract3 (buffer: Buffer, start: number, size: number):  Buffer{
+function extract3 (buffer: Buffer, start: number, size: number): Buffer {
   return buffer.slice(start, start + size)
 }
 

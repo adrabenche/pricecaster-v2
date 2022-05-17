@@ -34,21 +34,21 @@ export type VAA = {
 }
 export type PythAttestation = {
   symbol?: string,
-  productId: string,
-  priceId: string,
-  price_type?: number,
-  price?: BigInt,
-  exponent?: number,
-  twap?: BigInt,
-  twap_num_upd?: BigInt,
-  twap_denom_upd?: BigInt,
-  twac?: BigInt,
-  twac_num_upd?: BigInt,
-  twac_denom_upd?: BigInt,
-  confidence?: BigInt,
-  status?: number,
-  corporate_act?: number,
-  timestamp?: BigInt
+  productId: Buffer,
+  priceId: Buffer,
+  price: BigInt,
+  conf: BigInt,
+  expo: number,
+  ema_price: BigInt,
+  ema_conf: BigInt,
+  status: number,
+  num_publishers: number,
+  max_num_publishers: number,
+  attestation_time: BigInt,
+  publish_time: BigInt,
+  prev_publish_time: BigInt,
+  prev_price: BigInt,
+  prev_conf: BigInt
 }
 export type PythData = {
   vaaBody: Buffer,

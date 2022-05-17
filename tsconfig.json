@@ -26,6 +26,8 @@
 	},
 	"include": [
 		"backend/**/*.ts",
+		"lib/**/*.ts",
+		"tools/**/*.ts"
 	],
 	"exclude": [
 		"build",

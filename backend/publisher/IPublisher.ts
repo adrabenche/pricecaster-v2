@@ -19,7 +19,6 @@
  * limitations under the License.
  */
 
-import { PriceTicker } from '../common/priceTicker'
 import { StatusCode } from '../common/statusCodes'
 
 export type PublishInfo = {
