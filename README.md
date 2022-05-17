@@ -409,38 +409,39 @@ If account X is the stateless program address, this means that this account is w
 
 See the documentation `doc` subdirectory for format information.
 
-The following is a real world sample for a payload. For brevity purposes, only the first attestation bytes are dumped.
+The following is a real world sample of a Pyth 3.0 payload. For brevity purposes, only the first attestation bytes are dumped.
 
 ```
+
 ----------------------------------------------------------------------------------------
-50325748			Header (P2WH)
-0003				Major Version (3)
-0000				Minor Version (0)
-0001				Size of remaining header fields (constant 1)
-02				    Payload Id.  BatchPriceAttestation is 2.
+50325748            Header (P2WH)
+0003                Major Version (3)
+0000                Minor Version (0)
+0001                Size of remaining header fields (constant 1)
+02                  Payload Id.  BatchPriceAttestation is 2.
 ----------------------------------------------------------------------------------------
 0005                Num of Attestations
 0095c               Size in bytes of each attestation
 ----------------------------------------------------------------------------------------
-c67940be40e0cc7ffaa1acb08ee3fab30955a197da1ec297ab133d4d43d86ee6	product_id
+c67940be40e0cc7ffaa1acb08ee3fab30955a197da1ec297ab133d4d43d86ee6    product_id
 ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace    price_id
-0000002f102f53c0													price
-0000000005204180													conf
-fffffff8															exponent
-0000002fb05b7a40													ema_price
-00000000064a7e98													ema_conf
-01																	status
-00000015															num_publishers
-00000020															max_num_publishers
-000000006283efc2													attestation_time
-000000006283efc2													publish_time
-000000006283efc1													prev_publish_time
-0000002f102f53c0													prev_price
-0000000004f34f40													prev_conf
+0000002f102f53c0                                                    price
+0000000005204180                                                    conf
+fffffff8                                                            exponent
+0000002fb05b7a40                                                    ema_price
+00000000064a7e98                                                    ema_conf
+01                                                                  status
+00000015                                                            num_publishers
+00000020                                                            max_num_publishers
+000000006283efc2                                                    attestation_time
+000000006283efc2                                                    publish_time
+000000006283efc1                                                    prev_publish_time
+0000002f102f53c0                                                    prev_price
+0000000004f34f40                                                    prev_conf
 -----------------------------------------------------------------------------------------
 .
 .
-(remaining attestations follow)
 .
-.
+
+
 ```
