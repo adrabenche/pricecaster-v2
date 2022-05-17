@@ -27,12 +27,12 @@ module.exports = {
     dumpFailedTxDirectory: './dump'
   },
   apps: {
+    wormholeCoreAppId: 1054,
+    priceKeeperV2AppId: 728,
+    vaaVerifyProgramHash: '5PKAA6VERF6XZQAOJVKST262JKLKIYP3EGFO54ZD7YPUV7TRQOZ2BN6SPA',
+    asaIdMapperAppId: 729,
     vaaVerifyProgramBinFile: 'bin/vaa-verify.bin',
-    vaaProcessorAppId: 1210,
-    priceKeeperV2AppId: 1211,
-    asaIdMapperAppId: 1370,
     asaIdMapperDataNetwork: 'testnet',
-    vaaVerifyProgramHash: 'A7YL4343Z57EIR3SFXHB6PTM4FVR6W6TBPXICTN6KC2S3GM4DNW466AMIM',
     ownerAddress: 'XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM',
     ownerKeyFile: './keys/owner.key'
   },
@@ -45,5 +45,8 @@ module.exports = {
   },
   symbols: {
     sourceNetwork: 'devnet'
+  },
+  debug: {
+    skipPublish: true
   }
 }

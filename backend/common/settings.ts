@@ -47,6 +47,7 @@ export interface IAppSettings extends Record<string, unknown> {
   },
   debug?: {
     logAllVaa?: boolean,
+    skipPublish?: boolean,
   },
   wormhole: {
     spyServiceHost: string
