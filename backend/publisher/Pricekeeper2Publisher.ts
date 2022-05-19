@@ -1,26 +1,24 @@
-import algosdk from 'algosdk'
+import algosdk, { Account, Algodv2, assignGroupID, waitForConfirmation } from 'algosdk'
 import { IPublisher, PublishInfo } from './IPublisher'
 import { StatusCode } from '../common/statusCodes'
 import { PythData } from 'backend/common/basetypes'
-const PricecasterLib = require('../../lib/pricecaster')
-const tools = require('../../tools/app-tools')
-const { arrayChunks } = require('../../tools/app-tools')
+import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/lib/cjs/algorand'
+import PricecasterLib from '../../lib/pricecaster'
+import * as Logger from '@randlabs/js-logger'
 
 export class Pricekeeper2Publisher implements IPublisher {
   private algodClient: algosdk.Algodv2
-  private pclib: any
+  private pclib: PricecasterLib
   private account: algosdk.Account
-  private vaaProcessorAppId: number
-  private vaaProcessorOwner: string
-  private numOfVerifySteps: number = 0
-  private guardianCount: number = 0
-  private stepSize: number = 0
+  private wormholeCoreId: bigint
+  private priceCasterAppId: bigint
+  private sender: string
   private dumpFailedTx: boolean
   private dumpFailedTxDirectory: string | undefined
   private compiledVerifyProgram: { bytes: Uint8Array, hash: string } = { bytes: new Uint8Array(), hash: '' }
-  constructor (vaaProcessorAppId: number,
-    priceKeeperAppId: number,
-    vaaProcessorOwner: string,
+  constructor (wormholeCoreId: bigint,
+    priceCasterAppId: bigint,
+    sender: string,
     verifyProgramBinary: Uint8Array,
     verifyProgramHash: string,
     signKey: algosdk.Account,
@@ -30,16 +28,15 @@ export class Pricekeeper2Publisher implements IPublisher {
     dumpFailedTx: boolean = false,
     dumpFailedTxDirectory: string = './') {
     this.account = signKey
+    this.priceCasterAppId = priceCasterAppId
     this.compiledVerifyProgram.bytes = verifyProgramBinary
     this.compiledVerifyProgram.hash = verifyProgramHash
-    this.vaaProcessorAppId = vaaProcessorAppId
-    this.vaaProcessorOwner = vaaProcessorOwner
+    this.wormholeCoreId = wormholeCoreId
+    this.sender = sender
     this.dumpFailedTx = dumpFailedTx
     this.dumpFailedTxDirectory = dumpFailedTxDirectory
     this.algodClient = new algosdk.Algodv2(algoClientToken, algoClientServer, algoClientPort)
-    this.pclib = PricecasterLib(this.algodClient, vaaProcessorOwner)
-    this.pclib.setAppId('vaaProcessor', vaaProcessorAppId)
-    this.pclib.setAppId('pricekeeper', priceKeeperAppId)
+    this.pclib = new PricecasterLib(this.algodClient, sender)
     this.pclib.enableDumpFailedTx(this.dumpFailedTx)
     this.pclib.setDumpFailedTxDirectory(this.dumpFailedTxDirectory)
   }
@@ -56,61 +53,41 @@ export class Pricekeeper2Publisher implements IPublisher {
   }
 
   async publish (data: PythData): Promise<PublishInfo> {
-    const publishInfo: PublishInfo = { status: StatusCode.OK }
+    // const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), data.vaa, this.sender, BigInt(this.priceCasterAppId))
+    // const txs = submitVaaState.txs
+    // txs.push({ tx: await this.pclib.makePriceStoreTx(this.sender, data.vaa), signer: null })
+    // const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.account)
+    // console.log(ret)
 
-    const txParams = await this.algodClient.getTransactionParams().do()
-    txParams.fee = 1000
-    txParams.flatFee = true
+    data.attestations.forEach((att) => {
+      Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
+    })
 
-    this.guardianCount = await tools.readAppGlobalStateByKey(this.algodClient, this.vaaProcessorAppId, this.vaaProcessorOwner, 'gscount')
-    this.stepSize = await tools.readAppGlobalStateByKey(this.algodClient, this.vaaProcessorAppId, this.vaaProcessorOwner, 'vssize')
-    this.numOfVerifySteps = Math.ceil(this.guardianCount / this.stepSize)
-    if (this.guardianCount === 0 || this.stepSize === 0) {
-      throw new Error('cannot get guardian count and/or step-size from global state')
+    return {
+      status: StatusCode.OK
     }
-    //
-    // (!)
-    // Stateless programs cannot access state nor stack from stateful programs, so
-    // for the VAA Verify program to use the guardian set, we pass the global state as TX argument,
-    // (and check it against the current global list to be sure it's ok). This way it can be read by
-    // VAA verifier as a stateless program CAN DO READS of call transaction arguments in a group.
-    // The same technique is used for the note field, where the payload is set.
-    //
-
-    try {
-      const guardianKeys = []
-      const buf = Buffer.alloc(8)
-      for (let i = 0; i < this.guardianCount; i++) {
-        buf.writeBigUInt64BE(BigInt(i++))
-        const gk = await tools.readAppGlobalStateByKey(this.algodClient, this.vaaProcessorAppId, this.vaaProcessorOwner, buf.toString())
-        guardianKeys.push(Buffer.from(gk, 'base64').toString('hex'))
-      }
-
-      if (guardianKeys.length === 0) {
-        throw new Error('No guardian keys in global state.')
-      }
-
-      const keyChunks = arrayChunks(guardianKeys, this.stepSize)
-      const sigChunks = arrayChunks(data.signatures, this.stepSize * 132)
-
-      const gid = this.pclib.beginTxGroup()
-      for (let i = 0; i < this.numOfVerifySteps; i++) {
-        this.pclib.addVerifyTx(gid, this.compiledVerifyProgram.hash, txParams, data.vaaBody, keyChunks[i], this.guardianCount)
-      }
-      this.pclib.addPriceStoreTx(gid, this.vaaProcessorOwner, txParams, data.vaaBody.slice(51))
-      const txId = await this.pclib.commitVerifyTxGroup(gid, this.compiledVerifyProgram.bytes, data.signatures.length, sigChunks, this.vaaProcessorOwner, this.signCallback.bind(this))
-      publishInfo.txid = txId
-      publishInfo.confirmation = algosdk.waitForConfirmation(this.algodClient, txId, 10)
-    } catch (e: any) {
-      publishInfo.status = StatusCode.ERROR_SUBMIT_MESSAGE
-      if (e.response) {
-        publishInfo.reason = e.response.text ? e.response.text : e.toString()
-      } else {
-        publishInfo.reason = e.toString()
-      }
-      return publishInfo
-    }
-
-    return publishInfo
   }
+}
+
+async function signSendAndConfirmAlgorand (
+  algodClient: Algodv2,
+  txs: TransactionSignerPair[],
+  wallet: Account
+) {
+  assignGroupID(txs.map((tx) => tx.tx))
+  const signedTxns: Uint8Array[] = []
+  for (const tx of txs) {
+    if (tx.signer) {
+      signedTxns.push(await tx.signer.signTxn(tx.tx))
+    } else {
+      signedTxns.push(tx.tx.signTxn(wallet.sk))
+    }
+  }
+  await algodClient.sendRawTransaction(signedTxns).do()
+  const result = await waitForConfirmation(
+    algodClient,
+    txs[txs.length - 1].tx.txID(),
+    1
+  )
+  return result
 }

@@ -51,8 +51,6 @@ export type PythAttestation = {
   prev_conf: BigInt
 }
 export type PythData = {
-  vaaBody: Buffer,
-  signatures: Buffer,
-  attestations?: PythAttestation[]
+  vaa: Buffer,
+  attestations: PythAttestation[]
 }
-

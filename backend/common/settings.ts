@@ -32,12 +32,12 @@ export interface IAppSettings extends Record<string, unknown> {
     dumpFailedTxDirectory?: string
   },
   apps: {
-    priceKeeperV2AppId: number,
+    priceKeeperV2AppId: bigint,
+    wormholeCoreAppId: bigint,
     ownerAddress: string,
     ownerKeyFile: string,
     vaaVerifyProgramBinFile: string,
     vaaVerifyProgramHash: string,
-    vaaProcessorAppId: number,
     asaIdMapperAppId: number,
     asaIdMapperDataNetwork: 'testnet' | 'mainnet'
   },

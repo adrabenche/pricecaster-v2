@@ -79,7 +79,7 @@ export class WormholeClientEngine implements IEngine {
       Logger.warn('Using Null Publisher')
       publisher = new NullPublisher()
     } else {
-      publisher = new Pricekeeper2Publisher(this.settings.apps.vaaProcessorAppId,
+      publisher = new Pricekeeper2Publisher(this.settings.apps.wormholeCoreAppId,
         this.settings.apps.priceKeeperV2AppId,
         this.settings.apps.ownerAddress,
         verifyProgramBinary,
@@ -101,7 +101,8 @@ export class WormholeClientEngine implements IEngine {
     const fetcher = new WormholePythPriceFetcher(this.settings.wormhole.spyServiceHost,
       this.settings.pyth.chainId,
       this.settings.pyth.emitterAddress,
-      symbolInfo)
+      symbolInfo,
+      publisher)
 
     Logger.info('Updating Mapper state...')
     const mapper = new Pyth2AsaMapper(this.settings.apps.asaIdMapperAppId,
@@ -114,14 +115,16 @@ export class WormholeClientEngine implements IEngine {
 
     await mapper.updateMappings()
 
-    Logger.info('Waiting for fetcher to boot...')
-    await fetcher.start()
-
     Logger.info('Waiting for publisher to boot...')
     await publisher.start()
 
-    Logger.info(`Starting worker routine, interval ${this.settings.pollInterval}s`)
-    setInterval(this.callWorkerRoutine, this.settings.pollInterval * 1000, fetcher, publisher)
+    Logger.info('Waiting for fetcher to boot...')
+    await fetcher.start()
+
+    // Logger.info(`Starting worker routine, interval ${this.settings.pollInterval}s`)
+    // setInterval(this.callWorkerRoutine, this.settings.pollInterval * 1000, fetcher, publisher)
+
+    Logger.info('Ready.')
 
     while (!this.shouldQuit) {
       await sleep(1000)

@@ -34,7 +34,10 @@ import * as Logger from '@randlabs/js-logger'
 import { PythSymbolInfo } from 'backend/engine/SymbolInfo'
 import { base58 } from 'ethers/lib/utils'
 import tools from '../../tools/app-tools'
+import { IPublisher } from 'backend/publisher/IPublisher'
+// import { sha512_256 } from 'js-sha512'
 
+const PYTH_PAYLOAD_HEADER = 0x50325748
 const SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION = 3
 const SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION = 0
 const PYTH_ATTESTATION_PAYLOAD_ID = 2
@@ -48,7 +51,9 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   private coreWasm: any
   private data: PythData | undefined
   private symbolInfo: PythSymbolInfo
-  constructor (spyRpcServiceHost: string, pythChainId: number, pythEmitterAddress: string, symbolInfo: PythSymbolInfo) {
+  private publisher: IPublisher
+  private lastVaaSeq: number = 0
+  constructor (spyRpcServiceHost: string, pythChainId: number, pythEmitterAddress: string, symbolInfo: PythSymbolInfo, publisher: IPublisher) {
     setDefaultWasm('node')
     this._hasData = false
     this.client = createSpyRPCServiceClient(spyRpcServiceHost)
@@ -58,6 +63,7 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
       data: Buffer.from(pythEmitterAddress, 'hex').toJSON().data,
       s: pythEmitterAddress
     }
+    this.publisher = publisher
   }
 
   async start () {
@@ -72,14 +78,12 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
           }
         }]
     }
-    this.stream = await subscribeSignedVAA(this.client, {})
+    this.stream = await subscribeSignedVAA(this.client, filter)
 
-    this.stream.on('data', (data: { vaaBytes: Buffer }) => {
-      try {
-        this.onPythData(data.vaaBytes)
-      } catch (e) {
-        Logger.error(`Failed to parse VAA data. \nReason: ${e}\nData: ${data}`)
-      }
+    Logger.info('Suscribed to data stream.')
+
+    this.stream.on('data', async (data: { vaaBytes: Buffer }) => {
+      await this.onPythData(data.vaaBytes)
     })
 
     this.stream.on('error', (e: Error) => {
@@ -107,74 +111,89 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
 
   private async onPythData (vaaBytes: Buffer) {
     const v: VAA = this.coreWasm.parse_vaa(new Uint8Array(vaaBytes))
-    const payload = Buffer.from(v.payload)
+    if (v.sequence > this.lastVaaSeq) {
+      this.lastVaaSeq = v.sequence
 
-    const header = payload.readInt32BE(0)
-    const major_version = payload.readInt16BE(4)
-    const minor_version = payload.readInt16BE(6)
+      // const h = sha512_256.create()
+      // h.update(JSON.stringify(v))
+      // console.log(h.hex())
+      const payload = Buffer.from(v.payload)
 
-    if (header === 0x50325748) {
-      console.log(Buffer.from(v.emitter_address).toString('hex'), v.emitter_chain)
-      if (major_version === SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION) {
-        if (minor_version !== SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION) {
-          Logger.warn(`Version for this payload is ${major_version}.${minor_version}, while we support ${SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION}.${SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION}. Minor version changes shouldnt break parser. Contact administrator or dev team if any problem arises.`)
-        }
-        const hdr_size = payload.readInt16BE(8)
-        const payloadId = payload.readUInt8(10)
-        if (hdr_size === 1 && payloadId === PYTH_ATTESTATION_PAYLOAD_ID) {
-          const numAttest = payload.readInt16BE(11)
-          const sizeAttest = payload.readInt16BE(13)
+      const header = payload.readInt32BE(0)
+      const major_version = payload.readInt16BE(4)
+      const minor_version = payload.readInt16BE(6)
 
-          //
-          // Extract attestations for VAA body
-          //
-          const attestations: PythAttestation[] = []
-          for (let i = 0; i < numAttest; ++i) {
-            const attestation = tools.extract3(payload, 15 + (i * sizeAttest), sizeAttest)
-            console.log(i, attestation.toString('hex'))
+      if (header === PYTH_PAYLOAD_HEADER) {
+        // console.log(Buffer.from(v.emitter_address).toString('hex'), v.emitter_chain)
+        if (major_version === SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION) {
+          if (minor_version !== SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION) {
+            Logger.warn(`Version for this payload is ${major_version}.${minor_version}, while we support ${SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION}.${SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION}. Minor version changes shouldnt break parser. Contact administrator or dev team if any problem arises.`)
+          }
+          const hdr_size = payload.readInt16BE(8)
+          const payloadId = payload.readUInt8(10)
+          if (hdr_size === 1 && payloadId === PYTH_ATTESTATION_PAYLOAD_ID) {
+            const numAttest = payload.readInt16BE(11)
+            const sizeAttest = payload.readInt16BE(13)
 
-            const productId = tools.extract3(attestation, 0, 32)
-            const priceId = tools.extract3(attestation, 32, 32)
-
-            // // console.log(base58.encode(productId))
-            // // console.log(base58.encode(priceId))
-            const pythAttest: PythAttestation = {
-              symbol: this.symbolInfo.getSymbol(base58.encode(productId), base58.encode(priceId)),
-              productId,
-              priceId,
-              price: attestation.readBigUInt64BE(64),
-              conf: attestation.readBigUInt64BE(72),
-              expo: attestation.readUInt32BE(80),
-              ema_price: attestation.readBigUInt64BE(84),
-              ema_conf: attestation.readBigUInt64BE(92),
-              status: attestation.readUInt8(100),
-              num_publishers: attestation.readUInt32BE(101),
-              max_num_publishers: attestation.readUInt32BE(105),
-              attestation_time: attestation.readBigUInt64BE(109),
-              publish_time: attestation.readBigUInt64BE(117),
-              prev_publish_time: attestation.readBigUInt64BE(125),
-              prev_price: attestation.readBigUInt64BE(133),
-              prev_conf: attestation.readBigUInt64BE(141)
+            //
+            // Extract attestations for VAA body
+            //
+            const attestations: PythAttestation[] = this.getAttestations(numAttest, payload, sizeAttest)
+            this.data = {
+              vaa: vaaBytes,
+              attestations
             }
 
-            attestations.push(pythAttest)
-          }
-          this.data = {
-            vaaBody: vaaBytes.slice(6 + v.signatures.length * 66),
-            signatures: vaaBytes.slice(6, 6 + v.signatures.length * 66),
-            attestations
-          }
+            Logger.info(`VAA gs=${v.guardian_set_index} #sig=${v.signatures.length} ts=${v.timestamp} nonce=${v.nonce} seq=${v.sequence} clev=${v.consistency_level} payload_size=${payload.length} #attestations=${numAttest}`)
+            this._hasData = true
 
-          Logger.info(`VAA gs=${v.guardian_set_index} #sig=${v.signatures.length} ts=${v.timestamp} nonce=${v.nonce} seq=${v.sequence} clev=${v.consistency_level} payload_size=${payload.length} #attestations=${numAttest}`)
-          this._hasData = true
+            await this.publisher.publish(this.data)
+          } else {
+            Logger.error(`Bad Pyth payload payload Id (${payloadId}). Expected ${PYTH_ATTESTATION_PAYLOAD_ID}`)
+          }
         } else {
-          Logger.error(`Bad Pyth payload payload Id (${payloadId}). Expected ${PYTH_ATTESTATION_PAYLOAD_ID}`)
+          Logger.error(`Bad Pyth payload major version (${major_version}). Expected ${SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION}`)
         }
       } else {
-        Logger.error(`Bad Pyth payload major version (${major_version}). Expected ${SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION}`)
+        Logger.error(`Bad payload header (0x${header.toString(16)}). Expected 'P2WH'`)
       }
-    } else {
-      Logger.error(`Bad payload header (0x${header.toString(16)}). Expected 'P2WH'`)
     }
+  }
+
+  /*
+   * Get attestations from payload
+   */
+  private getAttestations (numAttest: number, payload: Buffer, sizeAttest: number) {
+    const attestations: PythAttestation[] = []
+    for (let i = 0; i < numAttest; ++i) {
+      const attestation = tools.extract3(payload, 15 + (i * sizeAttest), sizeAttest)
+      // console.log(i, attestation.toString('hex'))
+      const productId = tools.extract3(attestation, 0, 32)
+      const priceId = tools.extract3(attestation, 32, 32)
+
+      // // console.log(base58.encode(productId))
+      // // console.log(base58.encode(priceId))
+      const pythAttest: PythAttestation = {
+        symbol: this.symbolInfo.getSymbol(base58.encode(productId), base58.encode(priceId)),
+        productId,
+        priceId,
+        price: attestation.readBigUInt64BE(64),
+        conf: attestation.readBigUInt64BE(72),
+        expo: attestation.readInt32BE(80),
+        ema_price: attestation.readBigUInt64BE(84),
+        ema_conf: attestation.readBigUInt64BE(92),
+        status: attestation.readUInt8(100),
+        num_publishers: attestation.readUInt32BE(101),
+        max_num_publishers: attestation.readUInt32BE(105),
+        attestation_time: attestation.readBigUInt64BE(109),
+        publish_time: attestation.readBigUInt64BE(117),
+        prev_publish_time: attestation.readBigUInt64BE(125),
+        prev_price: attestation.readBigUInt64BE(133),
+        prev_conf: attestation.readBigUInt64BE(141)
+      }
+
+      attestations.push(pythAttest)
+    }
+    return attestations
   }
 }

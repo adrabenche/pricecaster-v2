@@ -21,7 +21,6 @@
 import algosdk from 'algosdk'
 // eslint-disable-next-line camelcase
 import tools from '../tools/app-tools'
-import crypto from 'crypto'
 const fs = require('fs')
 
 type ContractInfo = {
@@ -465,23 +464,6 @@ export default class PricecasterLib {
     // display results
     return this.algodClient.pendingTransactionInformation(txId).do()
   }
-
-  // /**
-  //  * Opt-in to the dynamic-storage LogicSig.
-  //  *
-  //  */
-  // this.optinToDynStoreLSig() = async function (sender, coreId, idx, emitter) {
-  //   const appEscrow = algosdk.getApplicationAddress(coreId)
-  //   program = program.replace(/TMPL_ADDR_IDX/, idx)
-  //   program = program.replace(/TMPL_EMITTER_ID/, emitter)
-  //   program = program.replace(/TMPL_SEED_AMT/, 1002000)
-  //   program = program.replace(/TMPL_APP_ID/, coreId)
-  //   program = program.replace(/TMPL_APP_ADDRESS/, '0x' + Buffer.from(algosdk.decodeAddress(appEscrow).publicKey).toString('hex'))
-  //   await this.compileProgram(program)
-
-  // }
-  // }
-
   /**
      * Call the Mapper contract to add a new Key-to-price+productId relationship.
      * @param sender The sender contract
@@ -501,149 +483,25 @@ export default class PricecasterLib {
   }
 
   /**
-     * Starts a begin...commit section for commiting grouped transactions.
-     */
-  beginTxGroup () {
-    const gid: string = crypto.randomBytes(16).toString('hex')
-    this.groupTxSet[gid] = []
-    return gid
+   * Pricekeeper-V2: Generate store price transaction.
+   * @param {*} gid The  TX group identifier generated with BeginGroup call.
+   * @param {*} sender The sender account (typically the VAA verification stateless program)
+   * @param {*} params The network TX parameters.
+   * @param {*} payload The VAA payload, hex-encoded.
+   */
+  async makePriceStoreTx (sender: string, payload: Buffer): Promise<algosdk.Transaction> {
+    const appArgs = []
+    const params = await this.algodClient.getTransactionParams().do()
+    params.fee = this.minFee
+    params.flatFee = true
+
+    appArgs.push(new Uint8Array(Buffer.from('store')), new Uint8Array(payload))
+
+    const tx = algosdk.makeApplicationNoOpTxn(sender,
+      params,
+      PRICECASTER_CI.appId,
+      appArgs)
+
+    return tx
   }
-
-  /**
-       * Adds a transaction to the group.
-       * @param {} tx Transaction to add.
-       */
-  addTxToGroup (gid: string, tx: any) {
-    if (this.groupTxSet[gid] === undefined) {
-      throw new Error('unknown tx group id')
-    }
-    this.groupTxSet[gid].push(tx)
-  }
-
-  /**
-     * @param {*} sender The sender account.
-     * @param {function} signCallback The sign callback routine.
-     * @returns Transaction id.
-     */
-  async commitTxGroup (gid: string, sender: string, signCallback: SignCallback) {
-    if (this.groupTxSet[gid] === undefined) {
-      throw new Error('unknown tx group id')
-    }
-    algosdk.assignGroupID(this.groupTxSet[gid])
-
-    // Sign the transactions
-    const signedTxns = []
-    for (const tx of this.groupTxSet[gid]) {
-      signedTxns.push(signCallback(sender, tx))
-    }
-
-    // Submit the transaction
-    const tx = await this.algodClient.sendRawTransaction(signedTxns).do()
-    delete this.groupTxSet[gid]
-    return tx.txId
-  }
-
-  /**
-     * @param {*} sender The sender account.
-     * @param {*} programBytes Compiled program bytes.
-     * @param {*} totalSignatureCount Total signatures present in the VAA.
-     * @param {*} sigSubsets An hex string with the signature subsets i..j for logicsig arguments.
-     * @param {*} lastTxSender The sender of the last TX in the group.
-     * @param {*} signCallback The signing callback function to use in the last TX of the group.
-     * @returns Transaction id.
-     */
-  async commitVerifyTxGroup (gid: string, programBytes: Uint8Array, totalSignatureCount: number,
-    sigSubsets: any[], lastTxSender: string, signCallback: SignCallback): Promise<string> {
-    if (this.groupTxSet[gid] === undefined) {
-      throw new Error('unknown group id')
-    }
-    algosdk.assignGroupID(this.groupTxSet[gid])
-    const signedGroup = []
-    let i = 0
-    for (const tx of this.groupTxSet[gid]) {
-      // All transactions except last must be signed by stateless code.
-
-      // console.log(`sigSubsets[${i}]: ${sigSubsets[i])
-
-      if (i === this.groupTxSet[gid].length - 1) {
-        signedGroup.push(signCallback(lastTxSender, tx))
-      } else {
-        const lsig = new algosdk.LogicSigAccount(programBytes, [Buffer.from(sigSubsets[i], 'hex'), algosdk.encodeUint64(totalSignatureCount)])
-        const stxn = algosdk.signLogicSigTransaction(tx, lsig)
-        signedGroup.push(stxn.blob)
-      }
-      i++
-    }
-
-    // Submit the transaction
-    let tx: any
-    try {
-      tx = await this.algodClient.sendRawTransaction(signedGroup).do()
-    } catch (e) {
-      if (this.dumpFailedTx) {
-        const id = tx ? tx.txId : Date.now().toString()
-        const filename = `${this.dumpFailedTxDirectory}/failed-${id}.stxn`
-        if (fs.existsSync(filename)) {
-          fs.unlinkSync(filename)
-        }
-        for (let i = 0; i < signedGroup.length; ++i) {
-          fs.appendFileSync(filename, signedGroup[i])
-        }
-      }
-      throw e
-    }
-    delete this.groupTxSet[gid]
-    return tx.txId
-  }
-
-  // /**
-  //  * VAA Processor: Add a verification step to a transaction group.
-  //  * @param {*} sender The sender account (typically the VAA verification stateless program)
-  //  * @param {*} payload The VAA payload in hex encoded string.
-  //  * @param {*} gksubset An hex string containing the keys for the guardian subset in this step.
-  //  * @param {*} totalguardians The total number of known guardians.
-  //  */
-  // function addVerifyTx  (gid: string, sender: string, params: any, payload: string, gksubset: string[], totalguardians: string): string {
-  //   if (this.groupTxSet[gid] === undefined) {
-  //     throw new Error('unknown group id')
-  //   }
-  //   const appArgs = []
-  //   appArgs.push(new Uint8Array(Buffer.from('verify')),
-  //     new Uint8Array(Buffer.from(gksubset.join(''), 'hex')),
-  //     algosdk.encodeUint64(parseInt(totalguardians)))
-
-  //   const tx = algosdk.makeApplicationNoOpTxn(sender,
-  //     params,
-  //     ContractInfo.wormholeCore.appId,
-  //     appArgs, undefined, undefined, undefined,
-  //     new Uint8Array(Buffer.from(payload, 'hex')))
-  //   this.groupTxSet[gid].push(tx)
-
-  //   return tx.txID()
-  // }
-
-  // /**
-  //  * Pricekeeper-V2: Add store price transaction to TX Group.
-  //  * @param {*} gid The  TX group identifier generated with BeginGroup call.
-  //  * @param {*} sender The sender account (typically the VAA verification stateless program)
-  //  * @param {*} params The network TX parameters.
-  //  * @param {*} payload The VAA payload, hex-encoded.
-  //  */
-  // function addPriceStoreTx  (gid, sender, params, payload) {
-  //   if (this.groupTxSet[gid] === undefined) {
-  //     throw new Error('unknown group id')
-  //   }
-  //   const appArgs = []
-  //   appArgs.push(new Uint8Array(Buffer.from('store')),
-  //     new Uint8Array(Buffer.from(payload, 'hex')))
-
-  //   const tx = algosdk.makeApplicationNoOpTxn(sender,
-  //     params,
-  //     ContractInfo.pricekeeper.appId,
-  //     appArgs)
-  //   this.groupTxSet[gid].push(tx)
-
-  //   return tx.txID()
-  // }
-  // }
 }
