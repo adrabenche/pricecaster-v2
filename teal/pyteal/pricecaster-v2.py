@@ -4,7 +4,7 @@
 
 The Pricecaster II Program
 
-v3.1
+v4.0
 
 (c) 2022 Wormhole Project Contributors
 
@@ -13,6 +13,7 @@ v1.0 - first version
 v2.0 - stores Pyth Payload
 v3.0 - supports Pyth V2 "batched" price Payloads.
 v3.1 - fixes to integrate with Wormhole Core Contract work.
+v4.0 - supports Pyth 3.0 Wire payload.
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the verification transaction group, and the verification condition
@@ -20,9 +21,9 @@ bits must be set.
 
 The following application calls are available.
 
-submit: Submit payload.  
+store: Submit payload.  
 
-The payload format must be V2, with batched message support.
+The payload format must be V3, with batched message support.
 
 ------------------------------------------------------------------------------------------------
 
@@ -34,15 +35,16 @@ value           packed fields as follow:
                 Bytes
                 
                 8               price
-                4               exponent
-                8               twap value
-                8               twac value
                 8               confidence
+                4               exponent
+                8               Price EMA value
+                8               Confidence EMA value
                 1               status
-                1               corporate act
-                8               timestamp (based on Solana contract call time)
-                ------------------------------
-                Total: 109 bytes.
+                4               number of publishers
+                8               Timestamp
+                8               previous price
+                -------------------------------------
+                Total: 57 bytes.
 
 ------------------------------------------------------------------------------------------------
 """
@@ -59,8 +61,10 @@ SLOTID_VERIFIED_BIT = 254
 SLOT_VERIFIED_BITFIELD = ScratchVar(TealType.uint64, SLOTID_VERIFIED_BIT)
 SLOT_TEMP = ScratchVar(TealType.uint64)
 VAA_PROCESSOR_APPID = App.globalGet(Bytes("coreid"))
-PYTH_ATTESTATION_V2_BYTES = 150
+PYTH_ATTESTATION_V2_BYTES = 149
 
+PYTH_MAGIC_HEADER = Bytes("\x50\x32\x57\x48")
+PYTH_WIRE_FORMAT_MAJOR_VERSION = Bytes("\x00\x03")
 
 @Subroutine(TealType.uint64)
 def is_creator():
@@ -116,36 +120,45 @@ def store():
 
     return Seq([
         pyth_payload.store(PYTH_PAYLOAD),
-        Assert(Global.group_size() > Int(1)),
-        Assert(Txn.application_args.length() == Int(2)),
-        Assert(is_creator()),
-        Assert(check_group_tx()),
+        # Assert(Global.group_size() > Int(1)),
+        # Assert(Txn.application_args.length() == Int(2)),
+        # Assert(is_creator()),
+        # Assert(check_group_tx()),
         
-        # check magic header and version
-        Assert(Extract(pyth_payload.load(), Int(0), Int(4)) == Bytes("\x50\x32\x57\x48")),
-        Assert(Extract(pyth_payload.load(), Int(4), Int(2)) == Bytes("\x00\x02")),
-        
+        # check magic header and version.
+        # We dont check minor version as we expect minor-version changes to NOT affect
+        # the wire-format compatibility.
+        #
+        Assert(Extract(pyth_payload.load(), Int(0), Int(4)) == PYTH_MAGIC_HEADER),
+        Assert(Extract(pyth_payload.load(), Int(4), Int(2)) == PYTH_WIRE_FORMAT_MAJOR_VERSION),
+
+        # check number of remaining fields (this is constant 1)
+        Assert(Extract(pyth_payload.load(), Int(8), Int(2)) == Bytes("\x00\x01")),
+
+        # check payload-id (must be type 2: Attestation) 
+        Assert(Extract(pyth_payload.load(), Int(10), Int(1)) == Bytes("\x02")),
+
         # get attestation count
-        num_attestations.store(Btoi(Extract(pyth_payload.load(), Int(7), Int(2)))),
+        num_attestations.store(Btoi(Extract(pyth_payload.load(), Int(11), Int(2)))),
         Assert(num_attestations.load() > Int(0)),
 
         # ensure standard V2 format 150-byte attestation
-        attestation_size.store(Btoi(Extract(pyth_payload.load(), Int(9), Int(2)))),
+        attestation_size.store(Btoi(Extract(pyth_payload.load(), Int(13), Int(2)))),
         Assert(attestation_size.load() == Int(PYTH_ATTESTATION_V2_BYTES)),
         
         # this message size must agree with data in fields
-        Assert(attestation_size.load() * num_attestations.load() + Int(11) == Len(pyth_payload.load())),
+        Assert(attestation_size.load() * num_attestations.load() + Int(15) == Len(pyth_payload.load())),
         
         # Read each attestation, store in global state.
 
         For(i.store(Int(0)), i.load() < num_attestations.load(), i.store(i.load() + Int(1))).Do(
             Seq([
-                attestation_data.store(Extract(pyth_payload.load(), Int(11) + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
-                product_price_key.store(Extract(attestation_data.load(), Int(7), Int(64))),
+                attestation_data.store(Extract(pyth_payload.load(), Int(15) + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
+                product_price_key.store(Extract(attestation_data.load(), Int(0), Int(64))),
                 packed_price_data.store(Concat(
-                    Extract(attestation_data.load(), Int(72), Int(20)),   # price + exponent + twap
-                    Extract(attestation_data.load(), Int(108), Int(8)),  # store twac
-                    Extract(attestation_data.load(), Int(132), Int(18)),  # confidence, status, corpact, timestamp
+                    Extract(attestation_data.load(), Int(64), Int(41)),   # price, confidence, exponent, price EMA, conf EMA, status, # publishers
+                    Extract(attestation_data.load(), Int(109), Int(8)),   # timestamp
+                    Extract(attestation_data.load(), Int(133), Int(8)),   # previous price
                 )),
                 App.globalPut(product_price_key.load(), packed_price_data.load()),
                 ])

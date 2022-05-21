@@ -28,8 +28,8 @@ module.exports = {
   },
   apps: {
     wormholeCoreAppId: 86525623,
-    priceKeeperV2AppId: 91167204,
-    asaIdMapperAppId: 91167232,
+    priceKeeperV2AppId: 91196838,
+    asaIdMapperAppId: 91196851,
     asaIdMapperDataNetwork: 'testnet',
     ownerAddress: 'XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM',
     ownerKeyFile: './keys/owner.key'

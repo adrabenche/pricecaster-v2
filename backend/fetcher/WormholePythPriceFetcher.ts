@@ -45,20 +45,16 @@ const PYTH_ATTESTATION_PAYLOAD_ID = 2
 export class WormholePythPriceFetcher implements IPriceFetcher {
   private client: SpyRPCServiceClient
   private pythEmitterAddress: { s: string, data: number[] }
-  private pythChainId: number
   private stream: any
   private _hasData: boolean
   private coreWasm: any
   private data: PythData | undefined
-  private symbolInfo: PythSymbolInfo
-  private publisher: IPublisher
   private lastVaaSeq: number = 0
-  constructor (spyRpcServiceHost: string, pythChainId: number, pythEmitterAddress: string, symbolInfo: PythSymbolInfo, publisher: IPublisher) {
+
+  constructor (readonly spyRpcServiceHost: string, readonly pythChainId: number, pythEmitterAddress: string, readonly symbolInfo: PythSymbolInfo, readonly publisher: IPublisher) {
     setDefaultWasm('node')
     this._hasData = false
     this.client = createSpyRPCServiceClient(spyRpcServiceHost)
-    this.pythChainId = pythChainId
-    this.symbolInfo = symbolInfo
     this.pythEmitterAddress = {
       data: Buffer.from(pythEmitterAddress, 'hex').toJSON().data,
       s: pythEmitterAddress
@@ -141,7 +137,8 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
             const attestations: PythAttestation[] = this.getAttestations(numAttest, payload, sizeAttest)
             this.data = {
               vaa: vaaBytes,
-              attestations
+              attestations,
+              payload: v.payload 
             }
 
             Logger.info(`VAA gs=${v.guardian_set_index} #sig=${v.signatures.length} ts=${v.timestamp} nonce=${v.nonce} seq=${v.sequence} clev=${v.consistency_level} payload_size=${payload.length} #attestations=${numAttest}`)

@@ -3,7 +3,7 @@ import { IPublisher, PublishInfo } from './IPublisher'
 import { StatusCode } from '../common/statusCodes'
 import { PythData } from 'backend/common/basetypes'
 import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/lib/cjs/algorand'
-import PricecasterLib from '../../lib/pricecaster'
+import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
 import * as Logger from '@randlabs/js-logger'
 
 export class Pricekeeper2Publisher implements IPublisher {
@@ -21,6 +21,9 @@ export class Pricekeeper2Publisher implements IPublisher {
     this.pclib = new PricecasterLib(this.algodClient, sender.addr)
     this.pclib.enableDumpFailedTx(this.dumpFailedTx)
     this.pclib.setDumpFailedTxDirectory(this.dumpFailedTxDirectory)
+
+    // HORRIBLE!!!! FIX ME:  Change Appid to bigints!
+    this.pclib.setAppId(PRICECASTER_CI, parseInt(priceCasterAppId.toString()))
   }
 
   async start () {
@@ -35,15 +38,29 @@ export class Pricekeeper2Publisher implements IPublisher {
   }
 
   async publish (data: PythData): Promise<PublishInfo> {
-    const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(data.vaa), this.sender.addr, BigInt(this.priceCasterAppId))
-    const txs = submitVaaState.txs
-    txs.push({ tx: await this.pclib.makePriceStoreTx(this.sender.addr, data.vaa), signer: null })
-    const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
-    console.log(ret)
+    try {
+      const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(data.vaa), this.sender.addr, BigInt(this.priceCasterAppId))
+      const txs = submitVaaState.txs
+      txs.push({ tx: await this.pclib.makePriceStoreTx(this.sender.addr, data.payload), signer: null })
+      const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
+      // console.log(ret)
 
-    data.attestations.forEach((att) => {
-      Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
-    })
+      if (ret['pool-error'] === '') {
+        if (ret['confirmed-round']) {
+          Logger.info(` ✔ Confirmed at round ${ret['confirmed-round']}`)
+        } else {
+          Logger.info('⚠ No confirmation information')
+        }
+      } else {
+        Logger.error(`❌ Rejected: ${ret['pool-error']}`)
+      }
+
+      data.attestations.forEach((att) => {
+        Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
+      })
+    } catch (e: any) {
+      Logger.error(`❌ Error submitting TX: ${e.toString()}`)
+    }
 
     return {
       status: StatusCode.OK

@@ -30,7 +30,7 @@ export type VAA = {
   emitter_address: [],
   sequence: number,
   consistency_level: number,
-  payload: []
+  payload: Buffer
 }
 export type PythAttestation = {
   symbol?: string,
@@ -52,5 +52,6 @@ export type PythAttestation = {
 }
 export type PythData = {
   vaa: Buffer,
+  payload: Buffer,
   attestations: PythAttestation[]
 }
