@@ -68,24 +68,24 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   console.log('Deployment App Id: %d', mapperAppId)
   pclib.setAppId(MAPPER_CI, mapperAppId)
 
-  console.log('Compiling verify VAA stateless code...')
-  out = spawnSync('python', [config.sources.vaa_verify_pyteal])
-  console.log(out.output.toString())
+  // console.log('Compiling verify VAA stateless code...')
+  // out = spawnSync('python', [config.sources.vaa_verify_pyteal])
+  // console.log(out.output.toString())
 
-  spawnSync('python', [config.sources.vaa_verify_pyteal])
-  const program = fs.readFileSync('vaa_verify.teal', 'utf8')
-  const compiledVerifyProgram = await pclib.compileProgram(program)
-  console.log('Stateless program address: ', compiledVerifyProgram.hash)
+  // spawnSync('python', [config.sources.vaa_verify_pyteal])
+  // const program = fs.readFileSync('vaa_verify.teal', 'utf8')
+  // const compiledVerifyProgram = await pclib.compileProgram(program)
+  // console.log('Stateless program address: ', compiledVerifyProgram.hash)
 
   const dt = Date.now().toString()
   const resultsFileName = 'DEPLOY-' + dt
-  const binaryFileName = 'VAA-VERIFY-' + dt + '.BIN'
+  // const binaryFileName = 'VAA-VERIFY-' + dt + '.BIN'
 
   console.log(`Writing deployment results file ${resultsFileName}...`)
-  fs.writeFileSync(resultsFileName, `wormholeCoreAppId: ${coreId}\npriceKeeperV2AppId: ${pkAppId}\nvaaVerifyProgramHash: '${compiledVerifyProgram.hash}'\nasaIdMapperAppId: ${mapperAppId}`)
+  fs.writeFileSync(resultsFileName, `wormholeCoreAppId: ${coreId}\npriceKeeperV2AppId: ${pkAppId}\nasaIdMapperAppId: ${mapperAppId}`)
 
-  console.log(`Writing stateless code binary file ${binaryFileName}...`)
-  fs.writeFileSync(binaryFileName, compiledVerifyProgram.bytes)
+  // console.log(`Writing stateless code binary file ${binaryFileName}...`)
+  // fs.writeFileSync(binaryFileName, compiledVerifyProgram.bytes)
 }
 
 (async () => {

@@ -157,11 +157,13 @@ def pricecaster_program():
     handle_create = Return(bootstrap())
     handle_update = Return(is_creator())
     handle_delete = Return(is_creator())
+    handle_optin = Return(Int(1))
     handle_noop = Cond(
         [METHOD == Bytes("store"), store()],
     )
     return Cond(
         [Txn.application_id() == Int(0), handle_create],
+        [Txn.on_completion() == OnComplete.OptIn, handle_optin],
         [Txn.on_completion() == OnComplete.UpdateApplication, handle_update],
         [Txn.on_completion() == OnComplete.DeleteApplication, handle_delete],
         [Txn.on_completion() == OnComplete.NoOp, handle_noop]

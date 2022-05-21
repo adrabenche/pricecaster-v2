@@ -8,7 +8,7 @@ module.exports = {
   networks: {
     testnet: {
       token: '',
-      api: 'https://api.testnet.algoexplorer.io',
+      api: 'https://node.testnet.algoexplorerapi.io',
       port: ''
     },
     mainnet: {

@@ -36,8 +36,6 @@ export interface IAppSettings extends Record<string, unknown> {
     wormholeCoreAppId: bigint,
     ownerAddress: string,
     ownerKeyFile: string,
-    vaaVerifyProgramBinFile: string,
-    vaaVerifyProgramHash: string,
     asaIdMapperAppId: number,
     asaIdMapperDataNetwork: 'testnet' | 'mainnet'
   },

@@ -65,15 +65,14 @@ export class WormholeClientEngine implements IEngine {
       this.shouldQuit = true
     })
 
-    let mnemo, verifyProgramBinary
+    let mnemo
     try {
       mnemo = fs.readFileSync(this.settings.apps.ownerKeyFile)
-      verifyProgramBinary = Uint8Array.from(fs.readFileSync(this.settings.apps.vaaVerifyProgramBinFile))
     } catch (e) {
-      throw new Error('❌ Cannot read account and/or verify program source: ' + e)
+      throw new Error('❌ Cannot read account key file: ' + e)
     }
 
-    let publisher;
+    let publisher
 
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')
@@ -81,9 +80,6 @@ export class WormholeClientEngine implements IEngine {
     } else {
       publisher = new Pricekeeper2Publisher(this.settings.apps.wormholeCoreAppId,
         this.settings.apps.priceKeeperV2AppId,
-        this.settings.apps.ownerAddress,
-        verifyProgramBinary,
-        this.settings.apps.vaaVerifyProgramHash,
         algosdk.mnemonicToSecretKey(mnemo.toString()),
         this.settings.algo.token,
         this.settings.algo.api,
@@ -152,7 +148,7 @@ export class WormholeClientEngine implements IEngine {
         } else {
           for (let i = 0; i < wrs!.data!.attestations!.length; ++i) {
             const att = wrs.data.attestations[i]
-            Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
+            Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} ema_price:${att.ema_price}`)
           }
         }
         break

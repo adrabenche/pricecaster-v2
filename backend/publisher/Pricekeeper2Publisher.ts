@@ -9,34 +9,16 @@ import * as Logger from '@randlabs/js-logger'
 export class Pricekeeper2Publisher implements IPublisher {
   private algodClient: algosdk.Algodv2
   private pclib: PricecasterLib
-  private account: algosdk.Account
-  private wormholeCoreId: bigint
-  private priceCasterAppId: bigint
-  private sender: string
-  private dumpFailedTx: boolean
-  private dumpFailedTxDirectory: string | undefined
-  private compiledVerifyProgram: { bytes: Uint8Array, hash: string } = { bytes: new Uint8Array(), hash: '' }
-  constructor (wormholeCoreId: bigint,
-    priceCasterAppId: bigint,
-    sender: string,
-    verifyProgramBinary: Uint8Array,
-    verifyProgramHash: string,
-    signKey: algosdk.Account,
-    algoClientToken: string,
-    algoClientServer: string,
-    algoClientPort: string,
-    dumpFailedTx: boolean = false,
-    dumpFailedTxDirectory: string = './') {
-    this.account = signKey
-    this.priceCasterAppId = priceCasterAppId
-    this.compiledVerifyProgram.bytes = verifyProgramBinary
-    this.compiledVerifyProgram.hash = verifyProgramHash
-    this.wormholeCoreId = wormholeCoreId
-    this.sender = sender
-    this.dumpFailedTx = dumpFailedTx
-    this.dumpFailedTxDirectory = dumpFailedTxDirectory
+  constructor (readonly wormholeCoreId: bigint,
+    readonly priceCasterAppId: bigint,
+    readonly sender: algosdk.Account,
+    readonly algoClientToken: string,
+    readonly algoClientServer: string,
+    readonly algoClientPort: string,
+    readonly dumpFailedTx: boolean = false,
+    readonly dumpFailedTxDirectory: string = './') {
     this.algodClient = new algosdk.Algodv2(algoClientToken, algoClientServer, algoClientPort)
-    this.pclib = new PricecasterLib(this.algodClient, sender)
+    this.pclib = new PricecasterLib(this.algodClient, sender.addr)
     this.pclib.enableDumpFailedTx(this.dumpFailedTx)
     this.pclib.setDumpFailedTxDirectory(this.dumpFailedTxDirectory)
   }
@@ -48,16 +30,16 @@ export class Pricekeeper2Publisher implements IPublisher {
   }
 
   signCallback (sender: string, tx: algosdk.Transaction) {
-    const txSigned = tx.signTxn(this.account.sk)
+    const txSigned = tx.signTxn(this.sender.sk)
     return txSigned
   }
 
   async publish (data: PythData): Promise<PublishInfo> {
-    // const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), data.vaa, this.sender, BigInt(this.priceCasterAppId))
-    // const txs = submitVaaState.txs
-    // txs.push({ tx: await this.pclib.makePriceStoreTx(this.sender, data.vaa), signer: null })
-    // const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.account)
-    // console.log(ret)
+    const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(data.vaa), this.sender.addr, BigInt(this.priceCasterAppId))
+    const txs = submitVaaState.txs
+    txs.push({ tx: await this.pclib.makePriceStoreTx(this.sender.addr, data.vaa), signer: null })
+    const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
+    console.log(ret)
 
     data.attestations.forEach((att) => {
       Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
@@ -87,7 +69,7 @@ async function signSendAndConfirmAlgorand (
   const result = await waitForConfirmation(
     algodClient,
     txs[txs.length - 1].tx.txID(),
-    1
+    4
   )
   return result
 }

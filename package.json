@@ -1,7 +1,7 @@
 {
   "name": "pricecaster",
-  "version": "2.0.0",
-  "description": "Pricecaster V2 Service",
+  "version": "3.0.0",
+  "description": "Pricecaster Service",
   "main": "index.js",
   "scripts": {
     "compile": "tsc",
@@ -14,7 +14,7 @@
   "author": "Randlabs inc",
   "license": "ISC",
   "dependencies": {
-    "@certusone/wormhole-sdk": "^0.3.3",
+    "@certusone/wormhole-sdk": "^0.3.4",
     "@certusone/wormhole-spydk": "^0.0.1",
     "@improbable-eng/grpc-web-node-http-transport": "^0.15.0",
     "@pythnetwork/client": "^2.6.3",
