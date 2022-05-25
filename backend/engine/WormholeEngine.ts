@@ -34,22 +34,6 @@ import { NullPublisher } from '../publisher/NullPublisher'
 const fs = require('fs')
 const algosdk = require('algosdk')
 
-type WorkerRoutineStatus = {
-  status: StatusCode,
-  reason?: string,
-  data?: PythData,
-  pub?: PublishInfo
-}
-
-async function workerRoutine (fetcher: IPriceFetcher, publisher: IPublisher): Promise<WorkerRoutineStatus> {
-  const data: PythData = fetcher.queryData()
-  if (data === undefined) {
-    return { status: StatusCode.NO_TICKER }
-  }
-  const pub = await publisher.publish(data)
-  return { status: pub.status, reason: pub.reason, data, pub }
-}
-
 export class WormholeClientEngine implements IEngine {
   private settings: IAppSettings
   private shouldQuit: boolean
@@ -117,47 +101,10 @@ export class WormholeClientEngine implements IEngine {
     Logger.info('Waiting for fetcher to boot...')
     await fetcher.start()
 
-    // Logger.info(`Starting worker routine, interval ${this.settings.pollInterval}s`)
-    // setInterval(this.callWorkerRoutine, this.settings.pollInterval * 1000, fetcher, publisher)
-
     Logger.info('Ready.')
 
     while (!this.shouldQuit) {
       await sleep(1000)
-    }
-  }
-
-  async callWorkerRoutine (fetcher: IPriceFetcher, publisher: IPublisher) {
-    const wrs = await workerRoutine(fetcher, publisher)
-    switch (wrs.status) {
-      case StatusCode.OK: {
-        Logger.info(`    TxID ${wrs.pub?.txid}`)
-        const pendingInfo = await wrs.pub?.confirmation
-        if (pendingInfo!['pool-error'] === '') {
-          if (pendingInfo!['confirmed-round']) {
-            Logger.info(` ✔ Confirmed at round ${pendingInfo!['confirmed-round']}`)
-          } else {
-            Logger.info('⚠ No confirmation information')
-          }
-        } else {
-          Logger.error(`❌ Rejected: ${pendingInfo!['pool-error']}`)
-        }
-
-        if (wrs.data?.attestations === undefined) {
-          Logger.warn(`No attestation data available. Txid= ${wrs.pub?.txid}`)
-        } else {
-          for (let i = 0; i < wrs!.data!.attestations!.length; ++i) {
-            const att = wrs.data.attestations[i]
-            Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} ema_price:${att.ema_price}`)
-          }
-        }
-        break
-      }
-      case StatusCode.NO_TICKER:
-        // Logger.warn('⚠ Poll: No new data available from fetcher data source')
-        break
-      default:
-        Logger.error('❌ ' + wrs.reason)
     }
   }
 }
