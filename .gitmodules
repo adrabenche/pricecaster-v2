@@ -1,4 +1,0 @@
-[submodule "wormhole"]
-	path = wormhole
-	url = git@github.com:certusone/wormhole.git
-	branch = dev.v2

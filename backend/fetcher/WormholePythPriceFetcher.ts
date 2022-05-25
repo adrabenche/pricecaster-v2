@@ -138,7 +138,7 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
             this.data = {
               vaa: vaaBytes,
               attestations,
-              payload: v.payload 
+              payload: v.payload
             }
 
             Logger.info(`VAA gs=${v.guardian_set_index} #sig=${v.signatures.length} ts=${v.timestamp} nonce=${v.nonce} seq=${v.sequence} clev=${v.consistency_level} payload_size=${payload.length} #attestations=${numAttest}`)

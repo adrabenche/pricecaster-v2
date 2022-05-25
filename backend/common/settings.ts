@@ -23,7 +23,6 @@ import { Cluster } from '@solana/web3.js'
 
 export interface IAppSettings extends Record<string, unknown> {
   log: Options,
-  pollInterval: number,
   algo: {
     token: string,
     api: string,

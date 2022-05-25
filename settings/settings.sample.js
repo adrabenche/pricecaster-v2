@@ -1,5 +1,4 @@
 module.exports = {
-  pollInterval: 4,
   log: {
     appName: 'pricecaster-v2',
     disableConsoleLog: false,
@@ -17,12 +16,9 @@ module.exports = {
     debugLevel: 1
   },
   algo: {
-    // token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    // api: 'http://localhost',
-    // port: '4001',
-    token: '30F57B65916305B7761149D46E0E8D548A9123383E87A28341517F6C39CF20C7',
-    api: 'http://51.210.214.25/',
-    port: '8002',
+    token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    api: 'http://localhost',
+    port: '4001',
     dumpFailedTx: true,
     dumpFailedTxDirectory: './dump'
   },
@@ -43,7 +39,7 @@ module.exports = {
     //
   },
   wormhole: {
-    spyServiceHost: 'natasha.randlabs.io:7073'
+    spyServiceHost: 'fabrikam.io:7073'
   },
   symbols: {
     sourceNetwork: 'devnet'
