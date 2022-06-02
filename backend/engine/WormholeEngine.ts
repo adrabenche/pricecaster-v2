@@ -20,15 +20,11 @@
 
 import { IEngine } from './IEngine'
 import { IAppSettings } from '../common/settings'
-import { IPriceFetcher } from '../fetcher/IPriceFetcher'
-import { IPublisher, PublishInfo } from '../publisher/IPublisher'
-import { StatusCode } from '../common/statusCodes'
 import { WormholePythPriceFetcher } from '../fetcher/WormholePythPriceFetcher'
 import { Pricekeeper2Publisher } from '../publisher/Pricekeeper2Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { sleep } from '../common/sleep'
 import { PythSymbolInfo } from './SymbolInfo'
-import { PythData } from '../common/basetypes'
 import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
 import { NullPublisher } from '../publisher/NullPublisher'
 const fs = require('fs')
