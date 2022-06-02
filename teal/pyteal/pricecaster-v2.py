@@ -16,8 +16,7 @@ v3.1 - fixes to integrate with Wormhole Core Contract work.
 v4.0 - supports Pyth 3.0 Wire payload.
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
-requires to be the last of the verification transaction group, and the verification condition
-bits must be set.
+requires to be the last of the Wormhole VAA verification transaction group.
 
 The following application calls are available.
 
@@ -57,10 +56,8 @@ import sys
 
 METHOD = Txn.application_args[0]
 PYTH_PAYLOAD = Txn.application_args[1]
-SLOTID_VERIFIED_BIT = 254
-SLOT_VERIFIED_BITFIELD = ScratchVar(TealType.uint64, SLOTID_VERIFIED_BIT)
 SLOT_TEMP = ScratchVar(TealType.uint64)
-VAA_PROCESSOR_APPID = App.globalGet(Bytes("coreid"))
+WORMHOLE_CORE_ID = App.globalGet(Bytes("coreid"))
 PYTH_ATTESTATION_V2_BYTES = 149
 
 PYTH_MAGIC_HEADER = Bytes("\x50\x32\x57\x48")
@@ -83,21 +80,33 @@ def bootstrap():
 @Subroutine(TealType.uint64)
 def check_group_tx():
     #
-    # Verifies that previous steps had set their verification bits.
-    # Verifies that previous steps are app calls issued from authorized appId.
+    # Verifies that group contains expected transactions:
+    #
+    # - calls/optins issued with authorized appId (Wormhole Core).
+    # - calls/optins issued for this appId (Pricecaster)
+    # - payment transfers for upfront fees from owner.
+    #
+    # There must be at least one app call to Wormhole Core Id.
     #
     i = SLOT_TEMP
+    is_corecall = ScratchVar(TealType.uint64)
     return Seq([
-        For(i.store(Int(1)),
+        is_corecall.store(Int(0)),
+        For(i.store(Int(0)),
             i.load() < Global.group_size() - Int(1),
             i.store(i.load() + Int(1))).Do(Seq([
-                Assert(Gtxn[i.load()].type_enum() == TxnType.ApplicationCall),
-                Assert(Gtxn[i.load()].application_id()
-                       == VAA_PROCESSOR_APPID),
-                Assert(GetBit(ImportScratchValue(i.load() - Int(1),
-                       SLOTID_VERIFIED_BIT), i.load() - Int(1)) == Int(1))
-            ])
+                If (Gtxn[i.load()].application_id() == WORMHOLE_CORE_ID, is_corecall.store(Int(1))),
+                Assert(
+                    Or(
+                        Gtxn[i.load()].application_id() == WORMHOLE_CORE_ID,
+                        Gtxn[i.load()].application_id() == Global.current_application_id(),
+                        And(
+                            Gtxn[i.load()].type_enum() == TxnType.Payment,
+                            Gtxn[i.load()].sender() == Global.creator_address()
+                    )))
+                ])
         ),
+        Assert(is_corecall.load() == Int(1)),
         Return(Int(1))
     ])
 
@@ -105,8 +114,7 @@ def check_group_tx():
 def store():
     # * Sender must be owner
     # * This must be part of a transaction group
-    # * All calls in group must be issued from authorized appid.
-    # * All calls in group must have verification bits set.
+    # * All calls in group must be issued from authorized Wormhole core.
     # * Argument 0 must be Pyth payload.
 
     pyth_payload = ScratchVar(TealType.bytes)
@@ -120,10 +128,10 @@ def store():
 
     return Seq([
         pyth_payload.store(PYTH_PAYLOAD),
-        # Assert(Global.group_size() > Int(1)),
-        # Assert(Txn.application_args.length() == Int(2)),
-        # Assert(is_creator()),
-        # Assert(check_group_tx()),
+        Assert(Global.group_size() > Int(1)),
+        Assert(Txn.application_args.length() == Int(2)),
+        Assert(is_creator()),
+        Assert(check_group_tx()),
         
         # check magic header and version.
         # We dont check minor version as we expect minor-version changes to NOT affect
@@ -203,7 +211,7 @@ if __name__ == "__main__":
 
     with open(approval_outfile, "w") as f:
         compiled = compileTeal(pricecaster_program(),
-                               mode=Mode.Application, version=5)
+                               mode=Mode.Application, version=6)
         f.write(compiled)
 
     print("Written to " + approval_outfile)
@@ -211,7 +219,7 @@ if __name__ == "__main__":
 
     with open(clear_state_outfile, "w") as f:
         compiled = compileTeal(clear_state_program(),
-                               mode=Mode.Application, version=5)
+                               mode=Mode.Application, version=6)
         f.write(compiled)
 
     print("Written to " + clear_state_outfile)
