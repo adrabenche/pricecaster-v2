@@ -20,7 +20,7 @@ import { Audio } from 'react-loader-spinner'
 
 const PricecasterSdk = require('pricecaster-client-sdk')
 const humanizeDuration = require('humanize-duration')
-const APP_ID = 75517911
+const APP_ID = 93287943
 const SOLANA_CLUSTER = 'devnet'
 
 class PriceView extends React.Component {
@@ -36,7 +36,9 @@ class PriceView extends React.Component {
 
 
   async componentDidMount() {
+    console.log('Connecting...')
     await this.sdk.connect()
+    console.log('Setting up timer...')
     this.timer = setInterval(() => this.fetchGlobalState(), 2000)
   }
   componentWillUnmount() {
@@ -45,6 +47,7 @@ class PriceView extends React.Component {
   }
   async fetchGlobalState() {
     const priceData = await this.sdk.queryData()
+    console.log(priceData)
     for (const priceItem of priceData) {
       const prev = this.state.priceData.find((item) => (item.symbol === priceItem.symbol))
       priceItem['change'] = (prev !== undefined) ? (prev.price.toNumber() - priceItem.price.toNumber()) : 0
@@ -71,9 +74,10 @@ class PriceView extends React.Component {
       return (<tr key={i} className={k.change < 0 ? "valueup" : (k.change > 0 ? "valuedown" : "valueequal")}>
         <td>{k.symbol.toString()}</td>
         <td>{parseFloat(k.price.toString()) / (10 ** -exp)}</td>
-        <td>{parseFloat(k.twap.toString()) / (10 ** -exp)}</td>
+        <td>{parseFloat(k.price_ema.toString()) / (10 ** -exp)}</td>
         <td>{parseFloat(k.conf.toString()) / (10 ** -exp)}</td>
-        <td>{parseFloat(k.twac.toString()) / (10 ** -exp)}</td>
+        <td>{parseFloat(k.conf_ema.toString()) / (10 ** -exp)}</td>
+        <td>{parseFloat(k.num_pub.toString())}</td>
         <td>{humanizeDuration(Date.now() - parseInt(k.time) * 1000, { round: true })}</td>
       </tr>)
     }))
@@ -84,9 +88,10 @@ class PriceView extends React.Component {
           <tr>
             <th>Symbol</th>
             <th>Price</th>
-            <th>Avg Price</th>
+            <th>Price EMA</th>
             <th>Confidence</th>
-            <th>Avg Confidence</th>
+            <th>Confidence EMA</th>
+            <th># Publishers</th>
             <th>Last update</th>
           </tr>
           {price_table_data}
