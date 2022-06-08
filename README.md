@@ -13,71 +13,14 @@ The current implementation is a Wormhole client that uses the JS SDK to get VAAs
 
 **The objective is to receive signed messages -named as Verifiable Attestments (VAAs) in Wormhole jargon- from our relayer backend (Pricecaster) , verify them against a fixed (and upgradeable) set of "guardian public keys" and process them, publishing on-chain price information or doing governance chores depending on the VAA payload.**
 
+### Wormhole Core Contracts
 
-The design is based in two contracts that work in tandem, a  **Stateful contract (VAA_Processor)** that accepts calls for verifying and commiting VAAs, and also mantains the global guardian set; and a **verifier stateless contract** that does the computational work of ECDSA signature verification.
+The verification of each received VAA is done by the tandem of Wormhole SDK plus core Wormhole contracts deployed in Algorand chain. Refer to https://github.com/certusone/wormhole/tree/dev.v2/algorand for the Wormhole Token and Core Bridge components, and to https://github.com/certusone/wormhole/tree/dev.v2/sdk for the JS SDK.
 
-Due to computation and space limits, the validation of the 19 guardian signatures against the payload is partitioned so each stateless contract validates a subset of the guardian signatures. If ECDSA decompress and validation opcodes are used, that yields 650+1750 = 2400 computation units * 7 = 16800, leaving 3200 free units for remaining opcodes.
-In our design, We call **verification step** to each of the app calls + stateless logic involved  in verifying a block of signatures.
-
-Keep in mind that *not all* the 19 signatures must be present in a VAA verification, but at least 1 + (2/3)  of the current guardian set.
-
-The maximum number of signatures in each verification step is fixed at contract compilation stage, so with this in mind and example values:
-
-* let $N_S$ be the total signatures to verify $(19)$
-* let $N_V$ be the number of signatures per verification step $(7)$,   
-* the required number of transactions $N_T = \lceil{N_S/N_V}\rceil = \lceil{19/7}\rceil = 3$
-* Each transaction-step $T_i$ will verify signatures $[j..k]$ where $j = i \times N_V$, $k = min(N_S-1, j+N_V-1)$, so for $T_0 = [0..6]$, $T_1 = [7..13]$, $T_2 = [14..18]$. 
-
-The verification process inputs consist of: 
-1. the set of current guardian public keys, 
-2. the signed message digest (VAA information fields + generic payload), 
-3. the set of signatures in the VAA header.  
-
-With the above in mind, and considering the space and computation limits in the current Algorand protocol, the typical flow for verifying a VAA for 19 guardians using step-size of 7, would be based on the following transaction group:
-
-
-| TX# | App calls | Stateless logic |
-| --- | --------- | --------------- |
-|  0  | _args_: guardian_pk[0..6], _txnote_: signed_digest          | _args_: sig[0..6]    |
-|  1  | _args_: guardian_pk[7..13], _txnote_: signed_digest          | _args_: sig[7..13]   |
-|  2  | _args_: guardian_pk[14..18], _txnote_: signed_digest          | _args_: sig[14..18]  | 
-|  3  | VAA consume call | N/A |
-
-The current design requires the last call to be a call to an authorized application. This is intended to process VAA price data. The authorized appid must be set accordingly using the `setauthid` call in the VAA Processor contract after deployment.
-If no call is going to be made, a dummy app call must be inserted in group for the transaction group to succeed.
-
-To mantain the long-term transaction costs predictable, when not all signatures are provided but > TRUNC(N_S*2/3)+1, the number of transactions in the group does not change, but a transaction may have zero signatures as input, e.g for a VAA with 14 signatures:
-
-| TX# | App calls | Stateless logic |
-| --- | --------- | --------------- |
-|  0  | _args_: guardian_pk[0..6], _txnote_: signed_digest          | _args_: sig[0..6]    |
-|  1  | _args_: guardian_pk[7..13], _txnote_: signed_digest          | _args_: sig[7..13]   |
-|  2  | _args_: guardian_pk[14..18], _txnote_: signed_digest          | _args_: **empty**    | 
-|  3  | VAA consume call | N/A |
 
 The backend will currently **call the Pricekeeper V2 contract to store data** as the last TX group. See below for details on how Pricekeeper works.
 
-Regarding stateless logic we can say that,
-
-* Its code is constant and it's known program hash is validated by the stateful program.
-* Asserts that the appropiate stateful program is called using known AppId embedded at compile stage.
-* Passing signature subset through arguments does not pose any higher risk since any tampered signature will make the operation to fail; 
-* The signed digest and public keys are retrieved through transaction note field and argument. This limits for the current design the maximum digest size to 1000 bytes and the maximum number of public keys -and guardians to ~64.
-* Verification is performed using TEAL5 ECDSA opcodes. If any signature do not verify, transaction fails and subsequently, the entire transaction group aborts.
-
-For the stateful app-calls we consider,
-
-* Global state stores guardian public-keys, entry count (set size) and guardian set expiration time.
-* Initial state after deployment could be set through a bootstrap call, using last guardian-set-change governance VAA if available.
-* Sender must be stateless logic 
-* Argument 1 must contain guardian public keys for guardians $[k..j]$
-* Argument 2 must contain current guardian size set
-* Note field must contain signed digest.
-* Passed guardian keys $[k..j]$ must match the current global state.
-* Passed guardian size set must match the current global state.
-* Last TX in the verification step (total group size-1) triggers VAA processing according to fields (e.g: do governance chores, unpack Pyth price ticker, etc).  Last TX in the entire group must be an authorized application call.
-
-**VAA Structure**
+### VAA Structure
 
 VAA structure is defined in: 
  https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0001_generic_message_passing.md
@@ -105,43 +48,47 @@ VAA structure is defined in:
  N            payload
  --------------------------------------< hashed/signed body ends here.
 ```
-**VAA Commitment**
-
-Each VAA is uniquely identified by tuple (emitter_chain_id, emitter_address, sequence). We are currently interested in VAAs for:
-
-* Governance operations:
-    * Upgrade guardian set
-    * Upgrade contract [this is necessary for non-publishers?]
-
-* Pyth Ticker Data
-
 ## Pricekeeper V2 App
 
 The Pricekeeper V2 App mantains a record of product/asset symbols (e.g ALGO/USD, BTC/USDT) indexed by keys of tuple `(productId,priceId)` and a byte array encoding price and metrics information. As the original Pyth Payload is 150-bytes long and it wouldn't fit in the value field for each key, the Pricekeeper contract converts on-the-fly the payload to a more compact form, discarding unneeded information.
 
-The Pricekeeper V2 App will allow storage to succeed only if:
+The Pricekeeper V2 App stores the following stateful information:
 
-* Sender is the contract owner.
-* Call is part of a group where all application calls are from the expected VAA processor Appid, 
-* Call is part of a group where the verification slot has all bits set.
+* `coreId`:  The accepted Wormhole Core application Id.
 
-At deployment, the priceKeeper V2 contract must have the "vaapid" global field set accordingly.
+The Pricekeeper V2 App will allow storage to succeed only if the transaction group contains:
+
+* Sender is the contract creator.
+* Calls/optins issued with authorized appId (Wormhole Core).
+* Calls/optins issued for the Pricecaster appid.
+* Payment transfers for upfront fees from owner.
+* There must be at least one app call to Wormhole Core Id.
 
 Consumers must interpret the stored bytes as fields organized as:
 
 ```
 Bytes
-8               Price
-4               Exponent
-8               Time-weighted average price
-8               Time-weighted average confidence
-8               Confidence
-1               Status (valid prices are published with status=1)
-1               Corporate Act (see Pyth documentation for this field.)
-8               Timestamp (based on Solana contract call time).
+8               price
+8               confidence
+4               exponent
+8               Price EMA value
+8               Confidence EMA value
+1               status
+4               number of publishers
+8               Timestamp
+8               previous price
 
-46 bytes.
+57 bytes.
 ```
+
+## Mapper Helper Application
+
+Since the Pricecaster data is indexed by a 64-byte value which corresponds to a unique Pyth product/symbol, a consumer of data needs to lookup on the main Pyth product table to query the mappings.  This can be done using the Pyth network SDK (look at `dump-pyth-acc.ts` under `tools` directory).
+
+For onchain applications, this is unfeasible. So the Mapper App  is provided for Algorand onchain applications to convert between ASA IDs and price-product keys. To find e.g the WETH value, an onchain application queries the Mapper app for such asset ID entry, gets the matching product+price key, and looks up for this key in the Pricecaster app to obtain the price and metric information.
+
+The current version of the backend updates the mapper entries at boot.
+
 ## Price-Explorer sample 
 
 The `samples` subdirectory contains a React app showing how consumers can fetch symbols, price information from the contract,  and display this information in real-time. 
@@ -248,15 +195,11 @@ txId: OQC7GKFRLLPIRGB35ZPYAP2XBYJEKJEGJ4S3S42RLPUUUPFQMILA
 Deployment App Id: 1101
 Compiling verify VAA stateless code...
 ,,
-Stateless program address:  5PKAA6VERF6XZQAOJVKST262JKLKIYP3EGFO54ZD7YPUV7TRQOZ2BN6SPA
 Writing deployment results file DEPLOY-1651761990771...
-Writing stateless code binary file VAA-VERIFY-1651761990771.BIN...
 Bye.
 ```
 
-* To operate, the stateless contract address must be supplied with funds to pay fees when submitting transactions.
-* Use the generated `DEPLOY-XXX` file to set values in the `settings-worm.ts` file (or your current one): app ids and stateless hash.  
-* Copy the generated `VAA-VERIFY-xxx`  file as `vaa-verify.bin` under the `bin` directory.
+* Use the generated `DEPLOY-XXX` file to set values in the settings file regarding app ids.
 
 ## Backend Configuration
 
@@ -266,18 +209,16 @@ The following settings are available:
 
 |Value|Description| 
 |-- |-- |
-|pollInterval   |  The interval for polling the fetcher component for new VAAs. | 
 |algo.token   | The token string for connecting the desired Algorand node.  | 
 |algo.api   | The API host URL for connecting the desired Algorand node.  | 
 |algo.port   | The port to connect to the desired Algorand node.  |  
 |algo.dumpFailedTx|  Set to `true` to dump failed transactions. Intended for debugging and analysis. |
 |algo.dumpFailedTxDirectory|  Destination of .STXN (signed-transaction) files for analysis. |
-| apps.vaaVerifyProgramBinFile | The compiled binary of the VAA verification TEAL program. This should point to the output of the deployment process file `VAA-VERIFY-xxxxxx.BIN`  |
-| apps.vaaProcessorAppId |  The application Id of the deployed VAA processor TEAL program. |
 |    apps.priceKeeperV2AppId | The application Id of the deployed VAA priceKeeper V2 TEAL program |
-|    apps.vaaVerifyProgramHash | The hash of the VAA verify program |
 |    apps.ownerAddress | The owner account address for the deployed programs |
 |    apps.ownerKeyFile| The file containing keys for the owner file. |
+|apps.asaIdMapperAppId|  The application Id of the Mapper helper application |
+|apps.asaIdMapperDataNetwork|  The network (testnet or mainnet) that the Mapper use to convert values |
 | pyth.chainId | The chainId of the Pyth data source |
 | pyth.emitterAddress | The address (in hex) of the Pyth emitter |
 | wormhole.spyServiceHost | The URI to listen for VAAs coming from the guardiand Spy service |
@@ -334,17 +275,7 @@ Check the `package.json` file for `npm run start-xxx`  automated commands.
 
 ## Tests
 
-* Fire up the dev sandbox.
-* Feed the reserve funds account with 10000000000 uALGOs:
-
-  ` ./sandbox goal clerk send -a 10000000000 -f <account> -t XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM`
-
-  **Replace <account>** with one of the pre-funded sandbox accounts (use `goal account list` to see them)
-
-
-* Run the test suite:
-  
-  `npm run wormhole-sc-test`
+**Tests are currently not working and are a legacy of the older design. This needs to be fixed**
 
 Backend tests will come shortly.
 
@@ -401,9 +332,7 @@ For deployment, use `-p 7074` to expose ports; remove `-ti` and add `-d` to leav
 
 **TransactionPool.Remember: transaction XMGXHGC4GVEHQD2T7MZDKTFJWFRY5TFXX2WECCXBWTOZVHC7QLAA: overspend, account X**
 
-If account X is the stateless program address, this means that this account is without enough balance to pay the fees for each TX group.
-
-
+This means that this account has not enough balance to pay the fees for the  TX group.  
 
 ### Sample Pyth VAA payload
 
