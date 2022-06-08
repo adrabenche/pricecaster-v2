@@ -21,6 +21,7 @@
 /* eslint-disable no-unused-vars */
 export enum StatusCode {
   OK,
+  NULL_DATA,
   NO_TICKER,
   ERROR_CREATE_MESSAGE,
   ERROR_SUBMIT_MESSAGE,

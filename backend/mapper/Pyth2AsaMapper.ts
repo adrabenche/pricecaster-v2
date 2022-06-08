@@ -20,7 +20,7 @@ import { PythSymbolInfo } from 'backend/engine/SymbolInfo'
 import { PythSymbolToAsaIdMainnet, PythSymbolToAsaIdTestnet } from './SymbolMap'
 import * as Logger from '@randlabs/js-logger'
 import { base58 } from 'ethers/lib/utils'
-const PricecasterLib = require('../../lib/pricecaster')
+import PricecasterLib, { MAPPER_CI } from '../../lib/pricecaster'
 
 export class Pyth2AsaMapper {
   private algodClient: algosdk.Algodv2
@@ -39,8 +39,8 @@ export class Pyth2AsaMapper {
     this.account = signKey
     this.mapperAppId = mapperAppId
     this.algodClient = new algosdk.Algodv2(algoClientToken, algoClientServer, algoClientPort)
-    this.pclib = new PricecasterLib.PricecasterLib(this.algodClient)
-    this.pclib.setAppId('mapper', mapperAppId)
+    this.pclib = new PricecasterLib(this.algodClient, this.account.addr)
+    this.pclib.setAppId(MAPPER_CI, mapperAppId)
     this.symbolInfo = symbolInfo
     this.mappingData = sourceNetwork === 'testnet' ? PythSymbolToAsaIdTestnet : PythSymbolToAsaIdMainnet
   }

@@ -23,7 +23,6 @@ import { Cluster } from '@solana/web3.js'
 
 export interface IAppSettings extends Record<string, unknown> {
   log: Options,
-  pollInterval: number,
   algo: {
     token: string,
     api: string,
@@ -32,12 +31,10 @@ export interface IAppSettings extends Record<string, unknown> {
     dumpFailedTxDirectory?: string
   },
   apps: {
-    priceKeeperV2AppId: number,
+    priceKeeperV2AppId: bigint,
+    wormholeCoreAppId: bigint,
     ownerAddress: string,
     ownerKeyFile: string,
-    vaaVerifyProgramBinFile: string,
-    vaaVerifyProgramHash: string,
-    vaaProcessorAppId: number,
     asaIdMapperAppId: number,
     asaIdMapperDataNetwork: 'testnet' | 'mainnet'
   },
@@ -47,6 +44,7 @@ export interface IAppSettings extends Record<string, unknown> {
   },
   debug?: {
     logAllVaa?: boolean,
+    skipPublish?: boolean,
   },
   wormhole: {
     spyServiceHost: string

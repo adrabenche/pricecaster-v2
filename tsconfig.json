@@ -21,11 +21,13 @@
 		"resolveJsonModule": true,
 		"removeComments": true,
 		"outDir": "build",
-		"types": ["node"],
+		"types": ["node", "mocha"],
 		"lib": [ "ES2020.Promise" ],
 	},
 	"include": [
 		"backend/**/*.ts",
+		"lib/**/*.ts",
+		"tools/**/*.ts"
 	],
 	"exclude": [
 		"build",

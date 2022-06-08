@@ -1,5 +1,4 @@
 module.exports = {
-  pollInterval: 4,
   log: {
     appName: 'pricecaster-v2',
     disableConsoleLog: false,
@@ -20,30 +19,32 @@ module.exports = {
     token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     api: 'http://localhost',
     port: '4001',
-    // token: '',
-    // api: 'https://api.testnet.algoexplorer.io',
-    // port: '',
     dumpFailedTx: true,
     dumpFailedTxDirectory: './dump'
   },
   apps: {
-    vaaVerifyProgramBinFile: 'bin/vaa-verify.bin',
-    vaaProcessorAppId: 1210,
-    priceKeeperV2AppId: 1211,
-    asaIdMapperAppId: 1370,
+    wormholeCoreAppId: 86525623,
+    priceKeeperV2AppId: 91196838,
+    asaIdMapperAppId: 91196851,
     asaIdMapperDataNetwork: 'testnet',
-    vaaVerifyProgramHash: 'A7YL4343Z57EIR3SFXHB6PTM4FVR6W6TBPXICTN6KC2S3GM4DNW466AMIM',
     ownerAddress: 'XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM',
     ownerKeyFile: './keys/owner.key'
   },
   pyth: {
-    chainId: 1,
-    emitterAddress: 'f346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
+    // Devnet
+    chainId: 1, emitterAddress: 'f346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
+    //
+    // Mainnet-beta
+    // chainId: 1, emitterAddress: '6bb14509a612f01fbbc4cffeebd4bbfb492a86df717ebe92eb6df432a3f00a25'
+    //
   },
   wormhole: {
-    spyServiceHost: 'natasha.randlabs.io:7073'
+    spyServiceHost: 'fabrikam.io:7073'
   },
   symbols: {
     sourceNetwork: 'devnet'
+  },
+  debug: {
+    skipPublish: false
   }
 }

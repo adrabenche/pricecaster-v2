@@ -20,7 +20,7 @@ const { PublicKey, clusterApiUrl, Connection } = require('@solana/web3.js')
 const { base58 } = require('ethers/lib/utils')
 const { Uint64BE } = require('int64-buffer')
 
-const PRICE_DATA_BYTES_LEN = 46
+const PRICE_DATA_BYTES_LEN = 57
 const algosdk = require('algosdk')
 const clusterToPythProgramKey = {}
 clusterToPythProgramKey['mainnet-beta'] = 'FsJ3A3u2vn5cTVofAjvy6y5kwABJAqYWpe4975bi2epH'
@@ -89,6 +89,7 @@ class PricecasterSdk {
   async queryData () {
     const priceData = []
     const app = await this.indexer.lookupApplications(this.appId).do()
+    console.log(app)
     const gstate = app.application.params['global-state']
     for (const entry of gstate) {
       const key = Buffer.from(entry.key, 'base64')
@@ -100,11 +101,12 @@ class PricecasterSdk {
         const price = new Uint64BE(v, 0)
         priceData.push({
           price,
-          exp: v.readInt32BE(8),
-          twap: new Uint64BE(v, 12),
-          twac: new Uint64BE(v, 20),
-          conf: new Uint64BE(v, 20 + 8),
-          time: new Uint64BE(v, 20 + 8 + 1 + 1 + 8),
+          conf: new Uint64BE(v, 8),
+          exp: v.readInt32BE(16),
+          price_ema: new Uint64BE(v, 8 + 8 + 4),
+          conf_ema: new Uint64BE(v, 8 + 8 + 4 + 8),
+          num_pub: v.readUInt32BE(8 + 8 + 4 + 8 + 8 + 1),
+          time: new Uint64BE(v, 8 + 8 + 4 + 8 + 8 + 1 + 4),
           symbol: sym === undefined ? productId.toString() + priceId.toString() : sym
         })
       }
