@@ -115,10 +115,10 @@ def store():
 
     return Seq([
         pyth_payload.store(PYTH_PAYLOAD),
-        Assert(Global.group_size() > Int(1)),
+        Assert(Or(Tmpl.Int("TMPL_I_TESTING"), Global.group_size() > Int(1))),
         Assert(Txn.application_args.length() == Int(2)),
         Assert(is_creator()),
-        Assert(check_group_tx()),
+        Assert(Or(Tmpl.Int("TMPL_I_TESTING"), check_group_tx())),
         
         # check magic header and version
         Assert(Extract(pyth_payload.load(), Int(0), Int(4)) == Bytes("\x50\x32\x57\x48")),
