@@ -207,13 +207,15 @@ def pricecaster_program():
     handle_noop = Cond(
         [METHOD == Bytes("store"), store()],
     )
-    return Cond(
+    return Seq([
+        Assert(Txn.rekey_to() == Global.zero_address()),
+        Cond(
         [Txn.application_id() == Int(0), handle_create],
         [Txn.on_completion() == OnComplete.OptIn, handle_optin],
         [Txn.on_completion() == OnComplete.UpdateApplication, handle_update],
         [Txn.on_completion() == OnComplete.DeleteApplication, handle_delete],
-        [Txn.on_completion() == OnComplete.NoOp, handle_noop]
-    )
+        [Txn.on_completion() == OnComplete.NoOp, handle_noop])
+    ])
 
 
 def clear_state_program():
