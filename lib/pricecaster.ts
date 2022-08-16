@@ -264,8 +264,12 @@ export default class PricecasterLib {
   /**
      * Compile approval program.
      */
-  async compileApprovalProgram (pcci: ContractInfo) {
-    const program = fs.readFileSync(pcci.approvalProgramFile, 'utf8')
+  async compileApprovalProgram (pcci: ContractInfo, tmplReplace: [string, string][] = []) {
+    let program = fs.readFileSync(pcci.approvalProgramFile, 'utf8')
+    tmplReplace.forEach((repl) => {
+      const regex = new RegExp(`${repl[0]}`, 'g')
+      program = program.replace(regex, repl[1])
+    })
     pcci.compiledApproval = await this.compileProgram(program)
   }
 
@@ -282,12 +286,14 @@ export default class PricecasterLib {
      * Create an application based on the default approval and clearState programs or based on the specified files.
      * @param  {String} sender account used to sign the createApp transaction
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
+     * @param  {Tuple[]} tmplReplace Array of tuples specifying template replacements in output TEAL.
      * @return {String} transaction id of the created application
      */
   async createApp (sender: string,
     pcci: ContractInfo,
     appArgs: Uint8Array[],
     signCallback: SignCallback,
+    tmplReplace: [string, string][] = [],
     skipCompile?: any): Promise<string> {
     const onComplete = algosdk.OnApplicationComplete.NoOpOC
 
@@ -297,7 +303,7 @@ export default class PricecasterLib {
     params.flatFee = true
 
     if (!skipCompile) {
-      await this.compileApprovalProgram(pcci)
+      await this.compileApprovalProgram(pcci, tmplReplace)
       await this.compileClearProgram(pcci)
     }
 
@@ -328,8 +334,8 @@ export default class PricecasterLib {
        * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
        * @return {String} transaction id of the created application
        */
-  async createPricecasterApp (sender: string, wormholeCore: number, signCallback: SignCallback): Promise<any> {
-    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback)
+  async createPricecasterApp (sender: string, wormholeCore: number, testMode: boolean, signCallback: SignCallback): Promise<any> {
+    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback, [['TMPL_I_TESTING', testMode ? '1' : '0']])
   }
 
   /**
