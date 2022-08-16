@@ -209,6 +209,8 @@ def pricecaster_program():
     )
     return Seq([
         Assert(Txn.rekey_to() == Global.zero_address()),
+        Assert(Txn.asset_close_to() == Global.zero_address()),
+        Assert(Txn.close_remainder_to() == Global.zero_address()),
         Cond(
         [Txn.application_id() == Int(0), handle_create],
         [Txn.on_completion() == OnComplete.OptIn, handle_optin],
