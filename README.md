@@ -165,38 +165,28 @@ Use the deployment tools in `tools` subdirectory.
 For example, using `deploy` with sample output: 
 
 ```
-$ npx ts-node tools\deploy.ts 1054 XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM dev keys\owner.key
+$ npx ts-node  tools/deploy.ts 86525623 testnet keys/owner.key
 
-Pricecaster v2 Apps Deployment Tool
-Copyright 2022 Wormhole Project Contributors
+
+Pricecaster v2   Version 5.0  Apps Deployment Tool
+Copyright 2022 Randlabs Inc.
 
 Parameters for deployment:
 From: XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM
-Network: dev
+Network: testnet
+Wormhole Core AppId: 86525623
 
 Enter YES to confirm parameters, anything else to abort. YES
-,Pricecaster V2 Program, (c) 2022 Wormhole Project Contributors
+,Pricecaster V2 Program     Version 5.0, (c) 2022-23 Randlabs, inc.
 Compiling approval program...
 Written to teal/build/pricecaster-v2-approval.teal
 Compiling clear state program...
 Written to teal/build/pricecaster-v2-clear.teal
 ,
 Creating Pricekeeper V2...
-txId: VDB34IJPAKBA4S3VBYJ6B6MMSCOWHLUYETLHEXPWJOS2QJ4PPD6Q
-Deployment App Id: 1100
-,ASA ID Mapper Program, (c) 2022 Wormhole Project Contributors
-Compiling approval program...
-Written to teal/build/mapper-approval.teal
-Compiling clear state program...
-Written to teal/build/mapper-clear.teal
-,
-Creating ASA ID Mapper...
-txId: OQC7GKFRLLPIRGB35ZPYAP2XBYJEKJEGJ4S3S42RLPUUUPFQMILA
-Deployment App Id: 1101
-Compiling verify VAA stateless code...
-,,
-Writing deployment results file DEPLOY-1651761990771...
-Bye.
+txId: RKNGKKO5WQ7W4JYNYDU2RYMBISFX4W7RQ2GJKCBIPV2IA4QWL75A
+Deployment App Id: 105363628
+Writing deployment results file DEPLOY-1660680886392...
 ```
 
 * Use the generated `DEPLOY-XXX` file to set values in the settings file regarding app ids.
@@ -214,7 +204,7 @@ The following settings are available:
 |algo.port   | The port to connect to the desired Algorand node.  |  
 |algo.dumpFailedTx|  Set to `true` to dump failed transactions. Intended for debugging and analysis. |
 |algo.dumpFailedTxDirectory|  Destination of .STXN (signed-transaction) files for analysis. |
-|    apps.priceKeeperV2AppId | The application Id of the deployed VAA priceKeeper V2 TEAL program |
+|    apps.pricecasterAppId | The application Id of the deployed VAA priceKeeper V2 TEAL program |
 |    apps.ownerAddress | The owner account address for the deployed programs |
 |    apps.ownerKeyFile| The file containing keys for the owner file. |
 |apps.asaIdMapperAppId|  The application Id of the Mapper helper application |
