@@ -21,17 +21,21 @@
 import { IEngine } from './IEngine'
 import { IAppSettings } from '../common/settings'
 import { WormholePythPriceFetcher } from '../fetcher/WormholePythPriceFetcher'
-import { Pricekeeper2Publisher as PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
+import { PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { sleep } from '../common/sleep'
 import { PythSymbolInfo } from './SymbolInfo'
 import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
 import { NullPublisher } from '../publisher/NullPublisher'
 import { Algodv2 } from 'algosdk'
+import { IPublisher } from 'backend/publisher/IPublisher'
+import { IPriceFetcher } from 'backend/fetcher/IPriceFetcher'
 const fs = require('fs')
 const algosdk = require('algosdk')
 
 export class WormholeClientEngine implements IEngine {
+  private publisher!: IPublisher
+  private fetcher!: IPriceFetcher
   private settings: IAppSettings
   private shouldQuit: boolean
   constructor (settings: IAppSettings) {
@@ -39,10 +43,20 @@ export class WormholeClientEngine implements IEngine {
     this.shouldQuit = false
   }
 
-  async start () {
-    process.on('SIGINT', () => {
+  async shutdown () {
+    if (!this.shouldQuit) {
       Logger.warn('Received SIGINT')
+      this.fetcher.stop()
+      this.publisher.stop()
+      await Logger.finalize()
       this.shouldQuit = true
+    }
+  }
+
+  async start () {
+    process.on('SIGINT', async () => {
+      process.off('SIGINT', this.shutdown)
+      await this.shutdown()
     })
 
     let mnemo
@@ -51,8 +65,6 @@ export class WormholeClientEngine implements IEngine {
     } catch (e) {
       throw new Error('❌ Cannot read account key file: ' + e)
     }
-
-    let publisher
 
     Logger.info(`Gathering prices from Pyth network ${this.settings.symbols.sourceNetwork}...`)
     const symbolInfo = new PythSymbolInfo(this.settings.symbols.sourceNetwork)
@@ -69,9 +81,9 @@ export class WormholeClientEngine implements IEngine {
 
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')
-      publisher = new NullPublisher()
+      this.publisher = new NullPublisher()
     } else {
-      publisher = new PricecasterPublisher(this.settings.apps.wormholeCoreAppId,
+      this.publisher = new PricecasterPublisher(this.settings.apps.wormholeCoreAppId,
         this.settings.apps.pricecasterAppId,
         algosdk.mnemonicToSecretKey(mnemo.toString()),
         new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port),
@@ -79,27 +91,23 @@ export class WormholeClientEngine implements IEngine {
         this.settings.algo.dumpFailedTxDirectory
       )
     }
-    const fetcher = new WormholePythPriceFetcher(this.settings.wormhole.spyServiceHost,
+    this.fetcher = new WormholePythPriceFetcher(this.settings.wormhole.spyServiceHost,
       this.settings.pyth.chainId,
       this.settings.pyth.emitterAddress,
       symbolInfo,
       mapper,
-      publisher)
+      this.publisher)
 
     Logger.info('Waiting for publisher to boot...')
-    await publisher.start()
+    this.publisher.start()
 
     Logger.info('Waiting for fetcher to boot...')
-    await fetcher.start()
+    this.fetcher.start()
 
     Logger.info('Ready.')
 
     while (!this.shouldQuit) {
       await sleep(1000)
     }
-
-    fetcher.stop()
-    publisher.stop()
-    Logger.finalize()
   }
 }

@@ -6,7 +6,7 @@ import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/
 import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
 import * as Logger from '@randlabs/js-logger'
 
-export class Pricekeeper2Publisher implements IPublisher {
+export class PricecasterPublisher implements IPublisher {
   private algodClient: algosdk.Algodv2
   private pclib: PricecasterLib
   constructor (readonly wormholeCoreId: bigint,
