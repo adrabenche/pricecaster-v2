@@ -35,6 +35,7 @@ import { PythSymbolInfo } from 'backend/engine/SymbolInfo'
 import { base58 } from 'ethers/lib/utils'
 import tools from '../../tools/app-tools'
 import { IPublisher } from 'backend/publisher/IPublisher'
+import { Pyth2AsaMapper } from 'backend/mapper/Pyth2AsaMapper'
 // import { sha512_256 } from 'js-sha512'
 
 const PYTH_PAYLOAD_HEADER = 0x50325748
@@ -51,7 +52,7 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   private data: PythData | undefined
   private lastVaaSeq: number = 0
 
-  constructor (readonly spyRpcServiceHost: string, readonly pythChainId: number, pythEmitterAddress: string, readonly symbolInfo: PythSymbolInfo, readonly publisher: IPublisher) {
+  constructor (readonly spyRpcServiceHost: string, readonly pythChainId: number, pythEmitterAddress: string, readonly symbolInfo: PythSymbolInfo, readonly mapper: Pyth2AsaMapper, readonly publisher: IPublisher) {
     setDefaultWasm('node')
     this._hasData = false
     this.client = createSpyRPCServiceClient(spyRpcServiceHost)
@@ -88,6 +89,8 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   }
 
   stop (): void {
+    Logger.info('Stopping fetcher...')
+    this.stream.destroy()
     this._hasData = false
   }
 
@@ -160,7 +163,7 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   /*
    * Get attestations from payload
    */
-  private getAttestations (numAttest: number, payload: Buffer, sizeAttest: number) {
+  private getAttestations (numAttest: number, payload: Buffer, sizeAttest: number): PythAttestation[] {
     const attestations: PythAttestation[] = []
     for (let i = 0; i < numAttest; ++i) {
       const attestation = tools.extract3(payload, 15 + (i * sizeAttest), sizeAttest)
@@ -170,8 +173,20 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
 
       // // console.log(base58.encode(productId))
       // // console.log(base58.encode(priceId))
+      const symbol = this.symbolInfo.getSymbol(base58.encode(productId), base58.encode(priceId))
+      let asaId
+      if (symbol) {
+        asaId = this.mapper.lookupAsa(symbol)
+        if (!asaId) {
+          Logger.warn(`No ASA ID mapping for symbol: ${symbol}`)
+        }
+      } else {
+        Logger.warn(`No symbol found for productId: ${productId} priceId: ${priceId}`)
+      }
+
       const pythAttest: PythAttestation = {
-        symbol: this.symbolInfo.getSymbol(base58.encode(productId), base58.encode(priceId)),
+        symbol,
+        asaId,
         productId,
         priceId,
         price: attestation.readBigUInt64BE(64),

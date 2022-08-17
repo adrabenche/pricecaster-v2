@@ -31,7 +31,7 @@ export interface IAppSettings extends Record<string, unknown> {
     dumpFailedTxDirectory?: string
   },
   apps: {
-    priceKeeperV2AppId: bigint,
+    pricecasterAppId: bigint,
     wormholeCoreAppId: bigint,
     ownerAddress: string,
     ownerKeyFile: string,

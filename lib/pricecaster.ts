@@ -489,19 +489,18 @@ export default class PricecasterLib {
   }
 
   /**
-   * Pricekeeper-V2: Generate store price transaction.
-   * @param {*} gid The  TX group identifier generated with BeginGroup call.
+   * Pricecaster.-V2: Generate store price transaction.
    * @param {*} sender The sender account (typically the VAA verification stateless program)
-   * @param {*} params The network TX parameters.
-   * @param {*} payload The VAA payload, hex-encoded.
+   * @param {*} assetId The ASA ID that corresponds to this value, or 0 if it's ALGO/USD
+   * @param {*} payload The VAA payload
    */
-  async makePriceStoreTx (sender: string, payload: Buffer): Promise<algosdk.Transaction> {
+  async makePriceStoreTx (sender: string, assetIds: Uint8Array, payload: Buffer): Promise<algosdk.Transaction> {
     const appArgs = []
     const params = await this.algodClient.getTransactionParams().do()
     params.fee = this.minFee
     params.flatFee = true
 
-    appArgs.push(new Uint8Array(Buffer.from('store')), new Uint8Array(payload))
+    appArgs.push(new Uint8Array(Buffer.from('store')), assetIds, new Uint8Array(payload))
 
     const tx = algosdk.makeApplicationNoOpTxn(sender,
       params,

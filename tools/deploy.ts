@@ -59,7 +59,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
 
   console.log(out.output.toString())
 
-  console.log('Creating Pricekeeper V2...')
+  console.log('Deploying Pricecaster V2 Application...')
   const txId = await pclib.createPricecasterApp(fromAddress, parseInt(coreId), false, signCallback)
   console.log('txId: ' + txId)
   const txResponse = await pclib.waitForTransactionResponse(txId)

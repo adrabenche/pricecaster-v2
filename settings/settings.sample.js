@@ -24,7 +24,7 @@ module.exports = {
   },
   apps: {
     wormholeCoreAppId: 86525623,
-    priceKeeperV2AppId: 91196838,
+    pricecasterAppId: 91196838,
     asaIdMapperAppId: 91196851,
     asaIdMapperDataNetwork: 'testnet',
     ownerAddress: 'XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM',

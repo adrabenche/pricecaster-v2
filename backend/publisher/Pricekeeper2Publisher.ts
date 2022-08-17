@@ -12,12 +12,10 @@ export class Pricekeeper2Publisher implements IPublisher {
   constructor (readonly wormholeCoreId: bigint,
     readonly priceCasterAppId: bigint,
     readonly sender: algosdk.Account,
-    readonly algoClientToken: string,
-    readonly algoClientServer: string,
-    readonly algoClientPort: string,
+    readonly algodv2: Algodv2,
     readonly dumpFailedTx: boolean = false,
     readonly dumpFailedTxDirectory: string = './') {
-    this.algodClient = new algosdk.Algodv2(algoClientToken, algoClientServer, algoClientPort)
+    this.algodClient = algodv2
     this.pclib = new PricecasterLib(this.algodClient, sender.addr)
     this.pclib.enableDumpFailedTx(this.dumpFailedTx)
     this.pclib.setDumpFailedTxDirectory(this.dumpFailedTxDirectory)
@@ -30,6 +28,7 @@ export class Pricekeeper2Publisher implements IPublisher {
   }
 
   stop () {
+    Logger.info('Stopping publisher.')
   }
 
   signCallback (sender: string, tx: algosdk.Transaction) {
@@ -41,10 +40,19 @@ export class Pricekeeper2Publisher implements IPublisher {
     try {
       const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(data.vaa), this.sender.addr, BigInt(this.priceCasterAppId))
       const txs = submitVaaState.txs
-      const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, data.payload)
+
+      const assetIds = new Uint8Array(8 * data.attestations.length)
+      let offset = 0
+      data.attestations.forEach(att => {
+        if (att.asaId) {
+          assetIds.set(algosdk.encodeUint64(att.asaId), offset)
+          offset += 8
+        }
+      })
+
+      const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, assetIds, data.payload)
       txs.push({ tx: storeTx, signer: null })
       const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
-      // console.log(ret)
 
       if (ret['pool-error'] === '') {
         if (ret['confirmed-round']) {
@@ -57,7 +65,11 @@ export class Pricekeeper2Publisher implements IPublisher {
       }
 
       data.attestations.forEach((att) => {
-        Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
+        if (att.asaId) {
+          Logger.info(`     ${att.symbol} (Asset ${att.asaId})      ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+        } else {
+          Logger.info(`     ${att.symbol} (not published, unknown ASA ID)     ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+        }
       })
     } catch (e: any) {
       Logger.error(`❌ Error submitting TX: ${e.toString()}`)
