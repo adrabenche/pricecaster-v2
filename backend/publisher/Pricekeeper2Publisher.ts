@@ -43,32 +43,39 @@ export class PricecasterPublisher implements IPublisher {
 
       const assetIds = new Uint8Array(8 * data.attestations.length)
       let offset = 0
+      let found = 0
       data.attestations.forEach(att => {
-        if (att.asaId) {
+        if (att.asaId !== undefined) {
           assetIds.set(algosdk.encodeUint64(att.asaId), offset)
           offset += 8
+          found++
         }
       })
 
-      const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, assetIds, data.payload)
-      txs.push({ tx: storeTx, signer: null })
-      const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
+      if (found > 0) {
+        const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, assetIds, data.payload)
+        txs.push({ tx: storeTx, signer: null })
+        const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
 
-      if (ret['pool-error'] === '') {
-        if (ret['confirmed-round']) {
-          Logger.info(` ✔ Confirmed at round ${ret['confirmed-round']}    Store TxID: ${storeTx.txID()}`)
+        if (ret['pool-error'] === '') {
+          if (ret['confirmed-round']) {
+            Logger.info(` ✔ Confirmed at round ${ret['confirmed-round']}    Store TxID: ${storeTx.txID()}`)
+          } else {
+            Logger.info('⚠ No confirmation information')
+          }
         } else {
-          Logger.info('⚠ No confirmation information')
+          Logger.error(`❌ Rejected: ${ret['pool-error']}`)
         }
-      } else {
-        Logger.error(`❌ Rejected: ${ret['pool-error']}`)
       }
 
+      Logger.info(`     ${found} of ${data.attestations.length} attestation(s) published.`)
       data.attestations.forEach((att) => {
-        if (att.asaId) {
-          Logger.info(`     ${att.symbol} (Asset ${att.asaId})      ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+        if (att.symbol === undefined) {
+          Logger.info(`   ⚠️ ${att.productId}${att.priceId} unpublished (no symbol mapping) ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+        } else if (att.asaId === undefined) {
+          Logger.info(`   ⚠️ ${att.symbol} unpublished (no ASA ID) ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
         } else {
-          Logger.info(`     ${att.symbol} (not published, unknown ASA ID)     ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+          Logger.info(`     ${att.symbol} (Asset ${att.asaId})      ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
         }
       })
     } catch (e: any) {
