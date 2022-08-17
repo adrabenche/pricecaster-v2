@@ -1,6 +1,8 @@
 
 # Pricecaster Service V2
 
+Version 5.0.0
+
 ## Introduction
 
 This service comprises on-chain and off-chain components and tools. The purpose is to consume prices from "price fetchers" and feeds blockchain publishers. 
@@ -48,15 +50,15 @@ VAA structure is defined in:
  N            payload
  --------------------------------------< hashed/signed body ends here.
 ```
-## Pricekeeper V2 App
+## Pricecaster Onchain App
 
-The Pricekeeper V2 App mantains a record of product/asset symbols (e.g ALGO/USD, BTC/USDT) indexed by keys of tuple `(productId,priceId)` and a byte array encoding price and metrics information. As the original Pyth Payload is 150-bytes long and it wouldn't fit in the value field for each key, the Pricekeeper contract converts on-the-fly the payload to a more compact form, discarding unneeded information.
+The Pricecaster App mantains a record of product/asset symbols (e.g ALGO/USD, BTC/USDT) indexed by keys of ASA IDs and a byte array encoding price and metrics information. As the original Pyth Payload is 150-bytes long and it wouldn't fit in the value field for each key, the Pricecaster contract converts on-the-fly the payload to a more compact form, discarding unneeded information.
 
-The Pricekeeper V2 App stores the following stateful information:
+The Pricecaster App stores the following stateful information:
 
 * `coreId`:  The accepted Wormhole Core application Id.
 
-The Pricekeeper V2 App will allow storage to succeed only if the transaction group contains:
+The Pricecaster app will allow storage to succeed only if the transaction group contains:
 
 * Sender is the contract creator.
 * Calls/optins issued with authorized appId (Wormhole Core).
@@ -66,28 +68,18 @@ The Pricekeeper V2 App will allow storage to succeed only if the transaction gro
 
 Consumers must interpret the stored bytes as fields organized as:
 
-```
-Bytes
-8               price
-8               confidence
-4               exponent
-8               Price EMA value
-8               Confidence EMA value
-1               status
-4               number of publishers
-8               Timestamp
-8               previous price
+| Field         | Explanation | Size (bytes) |
+|---------------|-------------|--------------|
+| Price         | The price as integer.  Use the `exponent` field as `price` * 10^`exponent` to obtain decimal value. | 8            |
+| Confidence    | The confidence (standard deviation) of the price | 8            |
+| Exponent      | The exponent to convert integer to decimal values | 4            | 
+| Price EMA     | The exponential-median-average (EMA) of the price field over a 30-day period | 8 | 
+| Confidence EMA| The exponential-median-average (EMA) of the confidence field over a 30-day period | 8 | 
+| Status        | 1 if this is a valid publication | 1 |
+| NumPublishers | The number of publishers of this product price feeding the Pyth Network | 4 |
+| Timestamp     | The timestamp when Pyth stored this in Solana network | 8 |
+| OriginalKey   | The original Price/Product key pair of this product in the Pyth Network | 64 | 
 
-57 bytes.
-```
-
-## Mapper Helper Application
-
-Since the Pricecaster data is indexed by a 64-byte value which corresponds to a unique Pyth product/symbol, a consumer of data needs to lookup on the main Pyth product table to query the mappings.  This can be done using the Pyth network SDK (look at `dump-pyth-acc.ts` under `tools` directory).
-
-For onchain applications, this is unfeasible. So the Mapper App  is provided for Algorand onchain applications to convert between ASA IDs and price-product keys. To find e.g the WETH value, an onchain application queries the Mapper app for such asset ID entry, gets the matching product+price key, and looks up for this key in the Pricecaster app to obtain the price and metric information.
-
-The current version of the backend updates the mapper entries at boot.
 
 ## Price-Explorer sample 
 
@@ -207,7 +199,6 @@ The following settings are available:
 |    apps.pricecasterAppId | The application Id of the deployed VAA priceKeeper V2 TEAL program |
 |    apps.ownerAddress | The owner account address for the deployed programs |
 |    apps.ownerKeyFile| The file containing keys for the owner file. |
-|apps.asaIdMapperAppId|  The application Id of the Mapper helper application |
 |apps.asaIdMapperDataNetwork|  The network (testnet or mainnet) that the Mapper use to convert values |
 | pyth.chainId | The chainId of the Pyth data source |
 | pyth.emitterAddress | The address (in hex) of the Pyth emitter |
