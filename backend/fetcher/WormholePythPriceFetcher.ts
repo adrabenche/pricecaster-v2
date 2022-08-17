@@ -4,7 +4,7 @@
  *
  * Fetcher backend component.
  *
- * Copyright 2022 Wormhole Project Contributors
+ * Copyright 2022 Randlabs Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,9 +177,6 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
       let asaId
       if (symbol) {
         asaId = this.mapper.lookupAsa(symbol)
-        if (!asaId) {
-          Logger.warn(`No ASA ID mapping for symbol: ${symbol}`)
-        }
       } else {
         Logger.warn(`No symbol found for productId: ${productId} priceId: ${priceId}`)
       }

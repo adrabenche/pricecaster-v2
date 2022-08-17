@@ -55,7 +55,6 @@ export class WormholeClientEngine implements IEngine {
 
   async start () {
     process.on('SIGINT', async () => {
-      process.off('SIGINT', this.shutdown)
       await this.shutdown()
     })
 
