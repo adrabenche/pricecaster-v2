@@ -16,16 +16,15 @@ module.exports = {
     debugLevel: 1
   },
   algo: {
-    token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    api: 'http://localhost',
-    port: '4001',
+    token: '30F57B65916305B7761149D46E0E8D548A9123383E87A28341517F6C39CF20C7',
+    api: 'http://51.210.214.25/',
+    port: '8002',
     dumpFailedTx: true,
     dumpFailedTxDirectory: './dump'
   },
   apps: {
     wormholeCoreAppId: 86525623,
-    pricecasterAppId: 91196838,
-    asaIdMapperAppId: 91196851,
+    pricecasterAppId: 105401087,
     asaIdMapperDataNetwork: 'testnet',
     ownerAddress: 'XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM',
     ownerKeyFile: './keys/owner.key'
@@ -39,7 +38,7 @@ module.exports = {
     //
   },
   wormhole: {
-    spyServiceHost: 'fabrikam.io:7073'
+    spyServiceHost: 'localhost:7073'
   },
   symbols: {
     sourceNetwork: 'devnet'

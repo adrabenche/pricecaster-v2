@@ -3,7 +3,7 @@
  *
  * Fetcher backend component.
  *
- * Copyright 2022 Wormhole Project Contributors
+ * Copyright 2022 Randlabs Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,16 +21,21 @@
 import { IEngine } from './IEngine'
 import { IAppSettings } from '../common/settings'
 import { WormholePythPriceFetcher } from '../fetcher/WormholePythPriceFetcher'
-import { Pricekeeper2Publisher } from '../publisher/Pricekeeper2Publisher'
+import { PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { sleep } from '../common/sleep'
 import { PythSymbolInfo } from './SymbolInfo'
 import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
 import { NullPublisher } from '../publisher/NullPublisher'
+import { Algodv2 } from 'algosdk'
+import { IPublisher } from 'backend/publisher/IPublisher'
+import { IPriceFetcher } from 'backend/fetcher/IPriceFetcher'
 const fs = require('fs')
 const algosdk = require('algosdk')
 
 export class WormholeClientEngine implements IEngine {
+  private publisher!: IPublisher
+  private fetcher!: IPriceFetcher
   private settings: IAppSettings
   private shouldQuit: boolean
   constructor (settings: IAppSettings) {
@@ -38,11 +43,19 @@ export class WormholeClientEngine implements IEngine {
     this.shouldQuit = false
   }
 
-  async start () {
-    process.on('SIGINT', () => {
-      console.log('Received SIGINT')
-      Logger.finalize()
+  async shutdown () {
+    if (!this.shouldQuit) {
+      Logger.warn('Received SIGINT')
+      this.fetcher.stop()
+      this.publisher.stop()
+      await Logger.finalize()
       this.shouldQuit = true
+    }
+  }
+
+  async start () {
+    process.on('SIGINT', async () => {
+      await this.shutdown()
     })
 
     let mnemo
@@ -52,35 +65,11 @@ export class WormholeClientEngine implements IEngine {
       throw new Error('❌ Cannot read account key file: ' + e)
     }
 
-    let publisher
-
-    if (this.settings.debug?.skipPublish) {
-      Logger.warn('Using Null Publisher')
-      publisher = new NullPublisher()
-    } else {
-      publisher = new Pricekeeper2Publisher(this.settings.apps.wormholeCoreAppId,
-        this.settings.apps.priceKeeperV2AppId,
-        algosdk.mnemonicToSecretKey(mnemo.toString()),
-        this.settings.algo.token,
-        this.settings.algo.api,
-        this.settings.algo.port,
-        this.settings.algo.dumpFailedTx,
-        this.settings.algo.dumpFailedTxDirectory
-      )
-    }
-
     Logger.info(`Gathering prices from Pyth network ${this.settings.symbols.sourceNetwork}...`)
     const symbolInfo = new PythSymbolInfo(this.settings.symbols.sourceNetwork)
     await symbolInfo.load()
     Logger.info(`Loaded ${symbolInfo.getSymbolCount()} product(s)`)
 
-    const fetcher = new WormholePythPriceFetcher(this.settings.wormhole.spyServiceHost,
-      this.settings.pyth.chainId,
-      this.settings.pyth.emitterAddress,
-      symbolInfo,
-      publisher)
-
-    Logger.info('Updating Mapper state...')
     const mapper = new Pyth2AsaMapper(this.settings.apps.asaIdMapperAppId,
       algosdk.mnemonicToSecretKey(mnemo.toString()),
       this.settings.algo.token,
@@ -89,13 +78,30 @@ export class WormholeClientEngine implements IEngine {
       this.settings.apps.asaIdMapperDataNetwork,
       symbolInfo)
 
-    await mapper.updateMappings()
+    if (this.settings.debug?.skipPublish) {
+      Logger.warn('Using Null Publisher')
+      this.publisher = new NullPublisher()
+    } else {
+      this.publisher = new PricecasterPublisher(this.settings.apps.wormholeCoreAppId,
+        this.settings.apps.pricecasterAppId,
+        algosdk.mnemonicToSecretKey(mnemo.toString()),
+        new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port),
+        this.settings.algo.dumpFailedTx,
+        this.settings.algo.dumpFailedTxDirectory
+      )
+    }
+    this.fetcher = new WormholePythPriceFetcher(this.settings.wormhole.spyServiceHost,
+      this.settings.pyth.chainId,
+      this.settings.pyth.emitterAddress,
+      symbolInfo,
+      mapper,
+      this.publisher)
 
     Logger.info('Waiting for publisher to boot...')
-    await publisher.start()
+    this.publisher.start()
 
     Logger.info('Waiting for fetcher to boot...')
-    await fetcher.start()
+    this.fetcher.start()
 
     Logger.info('Ready.')
 

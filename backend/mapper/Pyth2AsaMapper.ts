@@ -1,7 +1,7 @@
 /**
  * Pricecaster Service.
  *
- * Copyright 2022 Wormhole Project Contributors
+ * Copyright 2022 Randlabs Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ export class Pyth2AsaMapper {
     return tx.signTxn(this.account.sk)
   }
 
-  async updateMappings () {
+  async updateMappings (writeOnChain: boolean = false) {
     const mapsToSet: { asaId: number, key: Uint8Array }[] = []
     this.symbolInfo.getRawMap().forEach((symbol, k) => {
       const symMap = this.mappingData.get(symbol)
@@ -60,9 +60,15 @@ export class Pyth2AsaMapper {
       }
     })
 
-    for (const e of mapsToSet) {
-      const txId = await this.pclib.setMappingEntry(this.account.addr, e.asaId, e.key, this.signCallback.bind(this))
-      Logger.info('Called Mapper entry set, TxId ' + txId)
+    if (writeOnChain) {
+      for (const e of mapsToSet) {
+        const txId = await this.pclib.setMappingEntry(this.account.addr, e.asaId, e.key, this.signCallback.bind(this))
+        Logger.info('Called Mapper entry set, TxId ' + txId)
+      }
     }
+  }
+
+  lookupAsa (symbol: string): number | undefined {
+    return this.mappingData.get(symbol)
   }
 }

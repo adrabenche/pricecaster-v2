@@ -5,7 +5,7 @@
  *
  * Main program file.
  *
- * Copyright 2022 Wormhole Project Contributors
+ * Copyright 2022 Randlabs Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ const charm = require('charm')();
   charm.pipe(process.stdout)
   charm.reset()
   charm.foreground('cyan').display('bright')
-  console.log('Pricecaster Service Backend  -- (c) 2022 Wormhole Project Contributors\n')
+  console.log('Pricecaster Service Backend  -- (c) 2022 Randlabs Inc.\n')
   charm.foreground('white')
 
   let settings: IAppSettings

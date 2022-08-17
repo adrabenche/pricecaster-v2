@@ -3,7 +3,7 @@
  *
  * Pyth Product String to ASA ID
  *
- * Copyright 2022 Wormhole Project Contributors
+ * Copyright 2022 Randlabs Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ export const PythSymbolToAsaIdTestnet = new Map([
   ['Equity.US.NFLX/USD', undefined],
   ['Crypto.SCNSOL/USD', undefined],
   ['Crypto.SRM/USD', undefined],
-  ['Crypto.ETH/USD', undefined],
+  ['Crypto.ETH/USD', 90650110],
   ['Equity.US.AAPL/USD', undefined],
-  ['Crypto.BTC/USD', undefined],
+  ['Crypto.BTC/USD', 88808609],
   ['Crypto.BNB/USD', undefined],
   ['Equity.US.AMC/USD', undefined],
   ['Crypto.SOL/USD', undefined],

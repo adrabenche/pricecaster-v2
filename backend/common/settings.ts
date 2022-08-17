@@ -3,7 +3,7 @@
  *
  * Fetcher backend component.
  *
- * Copyright 2022 Wormhole Project Contributors
+ * Copyright 2022 Randlabs Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ export interface IAppSettings extends Record<string, unknown> {
     dumpFailedTxDirectory?: string
   },
   apps: {
-    priceKeeperV2AppId: bigint,
+    pricecasterAppId: bigint,
     wormholeCoreAppId: bigint,
     ownerAddress: string,
     ownerKeyFile: string,

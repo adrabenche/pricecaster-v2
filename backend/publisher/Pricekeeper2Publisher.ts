@@ -6,18 +6,16 @@ import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/
 import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
 import * as Logger from '@randlabs/js-logger'
 
-export class Pricekeeper2Publisher implements IPublisher {
+export class PricecasterPublisher implements IPublisher {
   private algodClient: algosdk.Algodv2
   private pclib: PricecasterLib
   constructor (readonly wormholeCoreId: bigint,
     readonly priceCasterAppId: bigint,
     readonly sender: algosdk.Account,
-    readonly algoClientToken: string,
-    readonly algoClientServer: string,
-    readonly algoClientPort: string,
+    readonly algodv2: Algodv2,
     readonly dumpFailedTx: boolean = false,
     readonly dumpFailedTxDirectory: string = './') {
-    this.algodClient = new algosdk.Algodv2(algoClientToken, algoClientServer, algoClientPort)
+    this.algodClient = algodv2
     this.pclib = new PricecasterLib(this.algodClient, sender.addr)
     this.pclib.enableDumpFailedTx(this.dumpFailedTx)
     this.pclib.setDumpFailedTxDirectory(this.dumpFailedTxDirectory)
@@ -30,6 +28,7 @@ export class Pricekeeper2Publisher implements IPublisher {
   }
 
   stop () {
+    Logger.info('Stopping publisher.')
   }
 
   signCallback (sender: string, tx: algosdk.Transaction) {
@@ -41,23 +40,43 @@ export class Pricekeeper2Publisher implements IPublisher {
     try {
       const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(data.vaa), this.sender.addr, BigInt(this.priceCasterAppId))
       const txs = submitVaaState.txs
-      const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, data.payload)
-      txs.push({ tx: storeTx, signer: null })
-      const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
-      // console.log(ret)
 
-      if (ret['pool-error'] === '') {
-        if (ret['confirmed-round']) {
-          Logger.info(` ✔ Confirmed at round ${ret['confirmed-round']}    Store TxID: ${storeTx.txID()}`)
-        } else {
-          Logger.info('⚠ No confirmation information')
+      const assetIds = new Uint8Array(8 * data.attestations.length)
+      let offset = 0
+      let found = 0
+      data.attestations.forEach(att => {
+        if (att.asaId !== undefined) {
+          assetIds.set(algosdk.encodeUint64(att.asaId), offset)
+          offset += 8
+          found++
         }
-      } else {
-        Logger.error(`❌ Rejected: ${ret['pool-error']}`)
+      })
+
+      if (found > 0) {
+        const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, assetIds, data.payload)
+        txs.push({ tx: storeTx, signer: null })
+        const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
+
+        if (ret['pool-error'] === '') {
+          if (ret['confirmed-round']) {
+            Logger.info(` ✔ Confirmed at round ${ret['confirmed-round']}    Store TxID: ${storeTx.txID()}`)
+          } else {
+            Logger.info('⚠ No confirmation information')
+          }
+        } else {
+          Logger.error(`❌ Rejected: ${ret['pool-error']}`)
+        }
       }
 
+      Logger.info(`     ${found} of ${data.attestations.length} attestation(s) published.`)
       data.attestations.forEach((att) => {
-        Logger.info(`     ${att.symbol}     ${att.price} ± ${att.conf} exp: ${att.expo} twap:${att.ema_price}`)
+        if (att.symbol === undefined) {
+          Logger.info(`   ⚠️ ${att.productId}${att.priceId} unpublished (no symbol mapping) ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+        } else if (att.asaId === undefined) {
+          Logger.info(`   ⚠️ ${att.symbol} unpublished (no ASA ID) ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+        } else {
+          Logger.info(`     ${att.symbol} (Asset ${att.asaId})      ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
+        }
       })
     } catch (e: any) {
       Logger.error(`❌ Error submitting TX: ${e.toString()}`)
