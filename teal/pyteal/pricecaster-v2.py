@@ -16,6 +16,7 @@ v3.1 - fixes to integrate with Wormhole Core Contract work.
 v4.0 - supports Pyth 3.0 Wire payload.
 v4.1 - audit fixes
 v5.0 - Algorand ASA centric redesign.  Now, keys are 8-byte ASA IDs.
+v6.0 - Store Normalized price format (picodollars per asset microunit)
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the Wormhole VAA verification transaction group.
@@ -44,8 +45,6 @@ value           packed fields as follow:
                 4               number of publishers
                 8               Timestamp
                 64              Origin productId + priceId key in Pyth network.
-                -----------------------------------------------------------------------
-                Total: 57 bytes.
 
 ------------------------------------------------------------------------------------------------
 """
@@ -85,12 +84,16 @@ PYTH_BEGIN_PAYLOAD_OFFSET = Int(15)
 PRODUCT_PRICE_KEY_LEN = Int(64)
 PRICE_DATA_OFFSET = Int(64)
 PRICE_DATA_LEN = Int(41)
+PRICE_DATA_EXPONENT_OFFSET = Int(12)
 PRICE_DATA_TIMESTAMP_OFFSET = Int(109)
 PRICE_DATA_PREV_PRICE_OFFSET = Int(133)
 PRICE_DATA_TIMESTAMP_LEN = Int(8)
 PRICE_DATA_PREV_PRICE_LEN = Int(8)
 
 UINT64_SIZE = Int(8)
+UINT32_SIZE = Int(4)
+
+ALGO_DECIMALS = Int(6)
 
 def XAssert(cond):
     return Assert(And(cond, Int(currentframe().f_back.f_lineno)))
@@ -156,8 +159,14 @@ def store():
     attestation_size = ScratchVar(TealType.uint64)
     attestation_data = ScratchVar(TealType.bytes)
     product_price_key = ScratchVar(TealType.bytes)
+    asa_id = ScratchVar(TealType.uint64)
+    asa_decimals = ScratchVar(TealType.uint64)
+    pyth_price = ScratchVar(TealType.uint64)
+    normalized_price = ScratchVar(TealType.uint64)
+    exponent = ScratchVar(TealType.uint64)
 
     i = ScratchVar(TealType.uint64)
+    ad = AssetParam.decimals(asa_id.load())
 
     return Seq([
 
@@ -200,12 +209,37 @@ def store():
         # Read each attestation, store in global state.
         # Use each ASA IDs  passed in call.
 
+
         For(i.store(Int(0)), i.load() < num_attestations.load(), i.store(i.load() + Int(1))).Do(
             Seq([
                 attestation_data.store(Extract(pyth_payload.load(), PYTH_BEGIN_PAYLOAD_OFFSET + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
                 product_price_key.store(Extract(attestation_data.load(), Int(0), PRODUCT_PRICE_KEY_LEN)),
+                asa_id.store(Btoi(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE))),
+                
+                # Normalize price as price * 10^(12 + exponent - asset_decimals)
+
+                If (
+                    asa_id.load() == Int(0), 
+
+                    # if Asset is 0 (ALGO), we cannot get decimals through AssetParams, so set to known value.
+                    asa_decimals.store(ALGO_DECIMALS),
+                    
+                    # otherwise, get onchain decimals parameter. 
+                    asa_decimals.store(Seq([ad, XAssert(ad.hasValue()), ad.value()]))
+                    ),
+
+                pyth_price.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_OFFSET, UINT64_SIZE))),
+                exponent.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_EXPONENT_OFFSET, UINT32_SIZE))),
+
+                # Exponent is always negative but we are with unsigned arithmetic, so we take abs(e) as e'= (MAX_UINT32 + 1 - e) 
+                # and do p_norm = p * 10^(12 - e' - d).  
+                #
+                normalized_price.store(pyth_price.load() * (Exp(Int(10), Int(12) - (Int(0x100000000) - exponent.load()) - asa_decimals.load() ))),
+
+                # Concatenate all
                 packed_price_data.store(Concat(
-                    Extract(attestation_data.load(), PRICE_DATA_OFFSET, PRICE_DATA_LEN),   # price, confidence, exponent, price EMA, conf EMA, status, # publishers
+                    Itob(normalized_price.load()),
+                    Extract(attestation_data.load(), PRICE_DATA_OFFSET + UINT64_SIZE, PRICE_DATA_LEN - UINT64_SIZE),   # price, confidence, exponent, price EMA, conf EMA, status, # publishers
                     Extract(attestation_data.load(), PRICE_DATA_TIMESTAMP_OFFSET, PRICE_DATA_TIMESTAMP_LEN),   # timestamp
                 )),
                 App.globalPut(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE), Concat(packed_price_data.load(), product_price_key.load())),

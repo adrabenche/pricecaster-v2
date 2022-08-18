@@ -491,21 +491,25 @@ export default class PricecasterLib {
   /**
    * Pricecaster.-V2: Generate store price transaction.
    * @param {*} sender The sender account (typically the VAA verification stateless program)
-   * @param {*} assetId The ASA ID that corresponds to this value, or 0 if it's ALGO/USD
+   * @param {*} assetIdsFlatArray The asset IDs contained in the attestations as a flat Uint8Array.
+   * @param {*} assetIds Array of asset ID numbers contained in the attestations.
    * @param {*} payload The VAA payload
    */
-  async makePriceStoreTx (sender: string, assetIds: Uint8Array, payload: Buffer): Promise<algosdk.Transaction> {
+  async makePriceStoreTx (sender: string, assetIdsFlatArray: Uint8Array, assetIds: number[], payload: Buffer): Promise<algosdk.Transaction> {
     const appArgs = []
     const params = await this.algodClient.getTransactionParams().do()
     params.fee = this.minFee
     params.flatFee = true
 
-    appArgs.push(new Uint8Array(Buffer.from('store')), assetIds, new Uint8Array(payload))
+    appArgs.push(new Uint8Array(Buffer.from('store')), assetIdsFlatArray, new Uint8Array(payload))
 
     const tx = algosdk.makeApplicationNoOpTxn(sender,
       params,
       PRICECASTER_CI.appId,
-      appArgs)
+      appArgs,
+      undefined,
+      undefined,
+      assetIds)
 
     return tx
   }
