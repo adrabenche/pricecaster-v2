@@ -8,7 +8,6 @@ const chai = require('chai')
 const spawnSync = require('child_process').spawnSync
 const testConfig = require('./test-config')
 chai.use(require('chai-as-promised'))
-// import WormholeAlgoSdk from 'wormhole/sdk/js/src/token_bridge/Algorand'
 
 let pclib: PricecasterLib
 let algodClient: algosdk.Algodv2
@@ -85,7 +84,7 @@ function prepareTxParameters (assetMap: AssetMapEntry[]): { payload: Buffer, fla
     const priceId = Buffer.from('bb'.repeat(32), 'hex')
     const price = Buffer.alloc(8)
     price.writeBigUInt64BE(BigInt(val.sample_price))
-    const conf = Buffer.from('00000000000000ff', 'hex')
+    const conf = Buffer.from('cc000000000000ff', 'hex')
     const exp = Buffer.alloc(4)
     exp.writeInt32BE(val.exponent)
     const ema = Buffer.from('00000000000000ff00000000000000ff', 'hex')
@@ -177,8 +176,14 @@ describe('Pricecaster App Tests', function () {
       const data = await appTools.readAppGlobalStateByKey(algodClient, pclib.getAppId(PRICECASTER_CI), ownerAccount.addr, asset.assetId!)
       expect(data).not.to.be.undefined
 
-      // const storedPrice = Buffer.from(data!, 'base64').subarray(0, 8).readBigUint64BE()
-      // expect(storedPrice).to.equal(BigInt(Math.round(asset.sample_price * Math.pow(10, (12 + asset.exponent - (asset.decimals === -1 ? 6 : asset.decimals))))))
+      const pythPrice = Buffer.from(data!, 'base64').subarray(0, 8).readBigUint64BE()
+      const normalizedPrice = Buffer.from(data!, 'base64').subarray(8, 16).readBigUint64BE()
+
+      const exp = Buffer.from(data!, 'base64').subarray(24, 28).readInt32BE()
+
+      expect(pythPrice).to.equal(BigInt(asset.sample_price))
+      expect(normalizedPrice).to.equal(BigInt(Math.round(asset.sample_price * Math.pow(10, (12 + asset.exponent - (asset.decimals === -1 ? 6 : asset.decimals))))))
+      expect(exp).to.equal(asset.exponent)
     }
   })
 
@@ -195,6 +200,6 @@ describe('Pricecaster App Tests', function () {
       txParams.assetIds,
       txParams.payload)
 
-    await expect(algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()).to.be.rejectedWith(/opcodes=pushint 240/)
+    await expect(algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()).to.be.rejectedWith(/opcodes=pushint 241/)
   })
 })

@@ -71,14 +71,22 @@ Consumers must interpret the stored bytes as fields organized as:
 | Field         | Explanation | Size (bytes) |
 |---------------|-------------|--------------|
 | Price         | The price as integer.  Use the `exponent` field as `price` * 10^`exponent` to obtain decimal value. | 8            |
+| Norm_Price    | The C3-Normalized price. See details below. | 8            |
 | Confidence    | The confidence (standard deviation) of the price | 8            |
 | Exponent      | The exponent to convert integer to decimal values | 4            | 
 | Price EMA     | The exponential-median-average (EMA) of the price field over a 30-day period | 8 | 
 | Confidence EMA| The exponential-median-average (EMA) of the confidence field over a 30-day period | 8 | 
 | Status        | 1 if this is a valid publication | 1 |
-| NumPublishers | The number of publishers of this product price feeding the Pyth Network | 4 |
 | Timestamp     | The timestamp when Pyth stored this in Solana network | 8 |
 | OriginalKey   | The original Price/Product key pair of this product in the Pyth Network | 64 | 
+
+
+### Price storage formats
+
+As is shown in the table above, prices are reported in two-formats:
+
+* **Standard price**  This is the original price in the Pyth payload.  To obtain the real value you must use `exponent` field to set the decimal point as  `p' = p * 10^e` 
+* **C3-Normalized price** This is the price in terms of _picodollars per microunit_, and is targeted at C3 centric applications. The normalization is calculated as `p' = p*10^(12+e-d)` where `e` is the exponent and `d` the number of decimals the asset uses.  `d` is obtained by looking at ASA parameter `Decimals`.
 
 
 ## Price-Explorer sample 

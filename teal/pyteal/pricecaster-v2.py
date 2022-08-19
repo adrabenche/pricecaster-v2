@@ -37,12 +37,12 @@ value           packed fields as follow:
                 Bytes
                 
                 8               price
+                8               normalized_price
                 8               confidence
                 4               exponent
                 8               Price EMA value
                 8               Confidence EMA value
                 1               status
-                4               number of publishers
                 8               Timestamp
                 64              Origin productId + priceId key in Pyth network.
 
@@ -83,7 +83,8 @@ PYTH_FIELD_ATTESTATION_SIZE_LEN = Int(2)
 PYTH_BEGIN_PAYLOAD_OFFSET = Int(15)
 PRODUCT_PRICE_KEY_LEN = Int(64)
 PRICE_DATA_OFFSET = Int(64)
-PRICE_DATA_LEN = Int(41)
+PRICE_DATA_LEN = Int(37)
+PRICE_DATA_NORMALIZED_OFFSET = Int(72)
 PRICE_DATA_EXPONENT_OFFSET = Int(64) + Int(16)
 PRICE_DATA_TIMESTAMP_OFFSET = Int(109)
 PRICE_DATA_PREV_PRICE_OFFSET = Int(133)
@@ -242,8 +243,9 @@ def store():
 
                 # Concatenate all
                 packed_price_data.store(Concat(
+                    Itob(pyth_price.load()),
                     Itob(normalized_price.load()),
-                    Extract(attestation_data.load(), PRICE_DATA_OFFSET + UINT64_SIZE, PRICE_DATA_LEN - UINT64_SIZE),   # price, confidence, exponent, price EMA, conf EMA, status, # publishers
+                    Extract(attestation_data.load(), PRICE_DATA_OFFSET + UINT64_SIZE, PRICE_DATA_LEN - UINT64_SIZE),   # confidence, exponent, price EMA, conf EMA, status, # publishers
                     Extract(attestation_data.load(), PRICE_DATA_TIMESTAMP_OFFSET, PRICE_DATA_TIMESTAMP_LEN),   # timestamp
                 )),
                 App.globalPut(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE), Concat(packed_price_data.load(), product_price_key.load())),
@@ -288,7 +290,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         clear_state_outfile = sys.argv[2]
 
-    print("Pricecaster V2 Program     Version 5.0, (c) 2022-23 Randlabs, inc.")
+    print("Pricecaster V2 TEAL Program     Version 6.0, (c) 2022-23 Randlabs, inc.")
     print("Compiling approval program...")
 
     with open(approval_outfile, "w") as f:
