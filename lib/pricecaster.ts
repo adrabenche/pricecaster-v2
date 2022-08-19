@@ -92,8 +92,6 @@ export default class PricecasterLib {
   private algodClient: algosdk.Algodv2
   private ownerAddr: string
   private minFee: number
-  private groupTxSet: Record<string, Array<algosdk.Transaction>>
-  private lsigs: {}
   private dumpFailedTx: boolean
   private dumpFailedTxDirectory: string
 
@@ -101,8 +99,6 @@ export default class PricecasterLib {
     this.algodClient = algodClient
     this.ownerAddr = ownerAddr
     this.minFee = 1000
-    this.groupTxSet = {}
-    this.lsigs = {}
     this.dumpFailedTx = false
     this.dumpFailedTxDirectory = './'
   }
@@ -470,23 +466,6 @@ export default class PricecasterLib {
     // display results
     return this.algodClient.pendingTransactionInformation(txId).do()
   }
-  /**
-     * Call the Mapper contract to add a new Key-to-price+productId relationship.
-     * @param sender The sender contract
-     * @param asaId The ASA ID.
-     * @param key The product-price key associated to the ASAID.
-     * @param signCallback Sign function callback
-     * @returns A promise for the transaction identifier.
-     */
-
-  async setMappingEntry (sender: string, asaId: number, key: Uint8Array, signCallback: SignCallback): Promise<string> {
-    if (!algosdk.isValidAddress(sender)) {
-      throw new Error('Invalid sender address: ' + sender)
-    }
-    const appArgs = []
-    appArgs.push(new Uint8Array(Buffer.from('store')), algosdk.encodeUint64(asaId), key)
-    return await this.callApp(sender, MAPPER_CI, appArgs, [], signCallback)
-  }
 
   /**
    * Pricecaster.-V2: Generate store price transaction.
@@ -495,6 +474,9 @@ export default class PricecasterLib {
    * @param {*} payload The VAA payload
    */
   async makePriceStoreTx (sender: string, assetIds: Uint8Array, payload: Buffer): Promise<algosdk.Transaction> {
+    if (this.dumpFailedTx) {
+      console.warn(`Dump failed to ${this.dumpFailedTxDirectory} unimplemented`)
+    }
     const appArgs = []
     const params = await this.algodClient.getTransactionParams().do()
     params.fee = this.minFee
