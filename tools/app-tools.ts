@@ -172,17 +172,30 @@ async function readAppGlobalState (algodClient: Algodv2, appId: number, accountA
   }
 }
 
-async function readAppGlobalStateByKey (algodClient: Algodv2, appId: number, accountAddr: string, key: string, disableParseAddress?: boolean) {
+async function readAppGlobalStateByKey (algodClient: Algodv2, appId: number, accountAddr: string, key: string | bigint | number, disableParseAddress?: boolean) {
   const accountInfoResponse = await algodClient.accountInformation(accountAddr).do()
   for (let i = 0; i < accountInfoResponse['created-apps'].length; i++) {
     if (accountInfoResponse['created-apps'][i].id === appId) {
       // console.log("Application's global state:")
       const stateArray = accountInfoResponse['created-apps'][i].params['global-state']
       for (let j = 0; j < stateArray.length; j++) {
-        const text = Buffer.from(stateArray[j].key, 'base64').toString()
+        if (typeof key === 'string') {
+          const text = Buffer.from(stateArray[j].key, 'base64').toString()
 
-        if (key === text) {
-          return appValueState(stateArray[j].value, disableParseAddress)
+          if (key === text) {
+            return appValueState(stateArray[j].value, disableParseAddress)
+          }
+        } else if (typeof key === 'bigint' || typeof key === 'number') {
+          let n
+          const v = (Buffer.from(stateArray[j].key, 'base64'))
+          if (v.length >= 8) {
+            n = v.readBigUint64BE()
+          }
+          if (BigInt(key) === n) {
+            return appValueState(stateArray[j].value, true)
+          }
+        } else {
+          throw new Error('Unsupported parameter type')
         }
       }
     }

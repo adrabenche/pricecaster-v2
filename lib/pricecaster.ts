@@ -283,6 +283,15 @@ export default class PricecasterLib {
   }
 
   /**
+     * Helper function to retrieve the asset id id from a createApp transaction response.
+     * @param  {Object} txResponse object containig the transactionResponse of the createApp call
+     * @return {Number} asset id of the created asset
+     */
+  assetIdFromCreateAppResponse (txResponse: any): any {
+    return txResponse['asset-index']
+  }
+
+  /**
      * Create an application based on the default approval and clearState programs or based on the specified files.
      * @param  {String} sender account used to sign the createApp transaction
      * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions

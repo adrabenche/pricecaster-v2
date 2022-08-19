@@ -84,7 +84,7 @@ PYTH_BEGIN_PAYLOAD_OFFSET = Int(15)
 PRODUCT_PRICE_KEY_LEN = Int(64)
 PRICE_DATA_OFFSET = Int(64)
 PRICE_DATA_LEN = Int(41)
-PRICE_DATA_EXPONENT_OFFSET = Int(12)
+PRICE_DATA_EXPONENT_OFFSET = Int(64) + Int(16)
 PRICE_DATA_TIMESTAMP_OFFSET = Int(109)
 PRICE_DATA_PREV_PRICE_OFFSET = Int(133)
 PRICE_DATA_TIMESTAMP_LEN = Int(8)
@@ -94,6 +94,7 @@ UINT64_SIZE = Int(8)
 UINT32_SIZE = Int(4)
 
 ALGO_DECIMALS = Int(6)
+PICO_DOLLARS_DECIMALS = Int(12)
 
 def XAssert(cond):
     return Assert(And(cond, Int(currentframe().f_back.f_lineno)))
@@ -141,7 +142,7 @@ def check_group_tx():
                     )))
                 ])
         ),
-        XAssert(is_corecall.load() == Int(1)),
+        XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), is_corecall.load() == Int(1))),
         Return(Int(1))
     ])
 
@@ -167,6 +168,8 @@ def store():
 
     i = ScratchVar(TealType.uint64)
     ad = AssetParam.decimals(asa_id.load())
+
+    norm_exp = Int(0x100000000) - exponent.load()
 
     return Seq([
 
@@ -232,9 +235,10 @@ def store():
                 exponent.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_EXPONENT_OFFSET, UINT32_SIZE))),
 
                 # Exponent is always negative but we are with unsigned arithmetic, so we take abs(e) as e'= (MAX_UINT32 + 1 - e) 
-                # and do p_norm = p * 10^(12 - e' - d).  
-                #
-                normalized_price.store(pyth_price.load() * (Exp(Int(10), Int(12) - (Int(0x100000000) - exponent.load()) - asa_decimals.load() ))),
+                # and do p' = p * 10^(12 - e' - d) ->  p' = p / 10^(d + e' - 12)      with   d + e >= 12
+
+                XAssert( (asa_decimals.load() + norm_exp) >= PICO_DOLLARS_DECIMALS),
+                normalized_price.store(pyth_price.load() / (Exp(Int(10), asa_decimals.load() + norm_exp - PICO_DOLLARS_DECIMALS))),
 
                 # Concatenate all
                 packed_price_data.store(Concat(
