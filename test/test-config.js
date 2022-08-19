@@ -30,5 +30,12 @@ module.exports = {
   //
   // Set to true to dump failed TX
   //
-  DUMP_FAILED_TX: false
+  DUMP_FAILED_TX: false,
+  //
+  // Python binary
+  //
+  PYTHON_BIN: 'python3.10',
+  //
+  //
+  PYTEALSOURCE: 'teal/pyteal/pricecaster-v2.py'
 }

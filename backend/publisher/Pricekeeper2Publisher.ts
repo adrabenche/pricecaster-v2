@@ -41,19 +41,21 @@ export class PricecasterPublisher implements IPublisher {
       const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(data.vaa), this.sender.addr, BigInt(this.priceCasterAppId))
       const txs = submitVaaState.txs
 
-      const assetIds = new Uint8Array(8 * data.attestations.length)
+      const flatU8ArrayAssetIds = new Uint8Array(8 * data.attestations.length)
+      const intAssetIds: number[] = []
       let offset = 0
       let found = 0
       data.attestations.forEach(att => {
         if (att.asaId !== undefined) {
-          assetIds.set(algosdk.encodeUint64(att.asaId), offset)
+          flatU8ArrayAssetIds.set(algosdk.encodeUint64(att.asaId), offset)
+          intAssetIds.push(att.asaId)
           offset += 8
           found++
         }
       })
 
       if (found > 0) {
-        const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, assetIds, data.payload)
+        const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, flatU8ArrayAssetIds, intAssetIds, data.payload)
         txs.push({ tx: storeTx, signer: null })
         const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
 
