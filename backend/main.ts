@@ -31,7 +31,7 @@ const charm = require('charm')();
   charm.pipe(process.stdout)
   charm.reset()
   charm.foreground('cyan').display('bright')
-  console.log('Pricecaster Service Backend  -- (c) 2022 Randlabs Inc.\n')
+  console.log('Pricecaster Service Backend  Version 6.0 -- (c) 2022 Randlabs Inc.\n')
   charm.foreground('white')
 
   let settings: IAppSettings
