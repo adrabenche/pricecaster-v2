@@ -2,9 +2,9 @@
 """
 ================================================================================================
 
-The Pricecaster II Program
+The Pricecaster Onchain Program
 
-v5.0
+Version 6.5
 
 (c) 2022-23 Randlabs, inc.
 
@@ -17,6 +17,9 @@ v4.0 - supports Pyth 3.0 Wire payload.
 v4.1 - audit fixes
 v5.0 - Algorand ASA centric redesign.  Now, keys are 8-byte ASA IDs.
 v6.0 - Store Normalized price format (picodollars per asset microunit)
+v6.5 - Use OpPull for budget maximization.  
+       Reject publications with Status != 1
+       Modify normalization price handling.
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the Wormhole VAA verification transaction group.
@@ -49,11 +52,9 @@ value           packed fields as follow:
 ------------------------------------------------------------------------------------------------
 """
 from inspect import currentframe
-from pyteal.ast import *
-from pyteal.types import *
-from pyteal.compiler import *
-from pyteal.ir import *
+from pyteal import *
 from globals import *
+from oppool import OpPool
 import sys
 
 METHOD = Txn.application_args[0]
@@ -86,6 +87,8 @@ PRICE_DATA_OFFSET = Int(64)
 PRICE_DATA_LEN = Int(37)
 PRICE_DATA_NORMALIZED_OFFSET = Int(72)
 PRICE_DATA_EXPONENT_OFFSET = Int(64) + Int(16)
+PRICE_DATA_STATUS_OFFSET = Int(100)
+PRICE_DATA_STATUS_LEN = Int(1)
 PRICE_DATA_TIMESTAMP_OFFSET = Int(109)
 PRICE_DATA_PREV_PRICE_OFFSET = Int(133)
 PRICE_DATA_TIMESTAMP_LEN = Int(8)
@@ -170,8 +173,8 @@ def store():
     i = ScratchVar(TealType.uint64)
     ad = AssetParam.decimals(asa_id.load())
 
-    norm_exp = Int(0x100000000) - exponent.load()
-
+    norm_exp = Int(0xffffffff) & (Int(0x100000000) - exponent.load())
+    op_pool = OpPool()
     return Seq([
 
         # Verify that we have an array of Uint64 values
@@ -213,43 +216,65 @@ def store():
         # Read each attestation, store in global state.
         # Use each ASA IDs  passed in call.
 
-
+        op_pool.maximize_budget(Int(1000)),
         For(i.store(Int(0)), i.load() < num_attestations.load(), i.store(i.load() + Int(1))).Do(
             Seq([
                 attestation_data.store(Extract(pyth_payload.load(), PYTH_BEGIN_PAYLOAD_OFFSET + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
                 product_price_key.store(Extract(attestation_data.load(), Int(0), PRODUCT_PRICE_KEY_LEN)),
                 asa_id.store(Btoi(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE))),
-                
-                # Normalize price as price * 10^(12 + exponent - asset_decimals)
 
-                If (
-                    asa_id.load() == Int(0), 
+                # Ensure status == 1
 
-                    # if Asset is 0 (ALGO), we cannot get decimals through AssetParams, so set to known value.
-                    asa_decimals.store(ALGO_DECIMALS),
-                    
-                    # otherwise, get onchain decimals parameter. 
-                    asa_decimals.store(Seq([ad, XAssert(ad.hasValue()), ad.value()]))
-                    ),
+                If(Extract(attestation_data.load(), PRICE_DATA_STATUS_OFFSET, PRICE_DATA_STATUS_LEN) != Bytes("base16", "0x01"),
+                    Log(Concat(Bytes("PC_IGNORED_PRICE_INVALID_STATUS "), Itob(asa_id.load()))),
 
-                pyth_price.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_OFFSET, UINT64_SIZE))),
-                exponent.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_EXPONENT_OFFSET, UINT32_SIZE))),
+                    # Valid status,  continue publication....
+                    Seq([
+                            # Normalize price as price * 10^(12 + exponent - asset_decimals) with  -12 <= exponent < 12,  0 <= d <= 19 
+                        If (
+                            asa_id.load() == Int(0), 
 
-                # Exponent is always negative but we are with unsigned arithmetic, so we take abs(e) as e'= (MAX_UINT32 + 1 - e) 
-                # and do p' = p * 10^(12 - e' - d) ->  p' = p / 10^(d + e' - 12)      with   d + e >= 12
+                            # if Asset is 0 (ALGO), we cannot get decimals through AssetParams, so set to known value.
+                            asa_decimals.store(ALGO_DECIMALS),
+                            
+                            # otherwise, get onchain decimals parameter. 
+                            asa_decimals.store(Seq([ad, XAssert(ad.hasValue()), ad.value()]))
+                            ),
 
-                XAssert( (asa_decimals.load() + norm_exp) >= PICO_DOLLARS_DECIMALS),
-                normalized_price.store(pyth_price.load() / (Exp(Int(10), asa_decimals.load() + norm_exp - PICO_DOLLARS_DECIMALS))),
+                        pyth_price.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_OFFSET, UINT64_SIZE))),
+                        exponent.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_EXPONENT_OFFSET, UINT32_SIZE))),
 
-                # Concatenate all
-                packed_price_data.store(Concat(
-                    Itob(pyth_price.load()),
-                    Itob(normalized_price.load()),
-                    Extract(attestation_data.load(), PRICE_DATA_OFFSET + UINT64_SIZE, PRICE_DATA_LEN - UINT64_SIZE),   # confidence, exponent, price EMA, conf EMA, status, # publishers
-                    Extract(attestation_data.load(), PRICE_DATA_TIMESTAMP_OFFSET, PRICE_DATA_TIMESTAMP_LEN),   # timestamp
-                )),
-                App.globalPut(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE), Concat(packed_price_data.load(), product_price_key.load())),
-                ])
+                        #                                                  
+                        # Branch as follows, if exp < 0     p' = p * 10^12
+                        #                                     -----------------
+                        #                                       10^d * 10^ABS(e)
+                        #
+                        # otherwise,  p' = p * 10^12 * 10^e
+                        #                  -----------------
+                        #                        10^d
+                        #
+                        # where -12 <= e <= 12 ,  0 <= d <= 19
+                        #
+
+                        If (exponent.load() < Int(0x80000000),  # uint32, 2-compl positive 
+                            normalized_price.store(WideRatio([pyth_price.load(), Exp(Int(10), PICO_DOLLARS_DECIMALS), Exp(Int(10), exponent.load())], 
+                                                             [Exp(Int(10), asa_decimals.load())])),
+
+                            normalized_price.store(WideRatio([pyth_price.load(), Exp(Int(10), PICO_DOLLARS_DECIMALS)], 
+                                                             [Exp(Int(10), asa_decimals.load()), Exp(Int(10), norm_exp)]))
+                        ),
+
+                        # Concatenate all
+                        packed_price_data.store(Concat(
+                            Itob(pyth_price.load()),
+                            Itob(normalized_price.load()),
+                            Extract(attestation_data.load(), PRICE_DATA_OFFSET + UINT64_SIZE, PRICE_DATA_LEN - UINT64_SIZE),   # confidence, exponent, price EMA, conf EMA, status, # publishers
+                            Extract(attestation_data.load(), PRICE_DATA_TIMESTAMP_OFFSET, PRICE_DATA_TIMESTAMP_LEN),   # timestamp
+                        )),
+                        App.globalPut(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE), Concat(packed_price_data.load(), product_price_key.load())),
+                    ])
+                )
+            ])
         ),
         Approve()])
 
@@ -290,7 +315,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         clear_state_outfile = sys.argv[2]
 
-    print("Pricecaster V2 TEAL Program     Version 6.0, (c) 2022-23 Randlabs, inc.")
+    print("Pricecaster V2 TEAL Program     Version 6.5, (c) 2022-23 Randlabs, inc.")
     print("Compiling approval program...")
 
     with open(approval_outfile, "w") as f:

@@ -478,15 +478,17 @@ export default class PricecasterLib {
 
   /**
    * Pricecaster.-V2: Generate store price transaction.
+   *
+   * Other transaction in group must provide for 2000 uALGO fee for maximizing computation budget.
    * @param {*} sender The sender account (typically the VAA verification stateless program)
    * @param {*} assetIdsFlatArray The asset IDs contained in the attestations as a flat Uint8Array.
    * @param {*} assetIds Array of asset ID numbers contained in the attestations.
    * @param {*} payload The VAA payload
    */
-  async makePriceStoreTx (sender: string, assetIdsFlatArray: Uint8Array, assetIds: number[], payload: Buffer): Promise<algosdk.Transaction> {
+  async makePriceStoreTx (sender: string, assetIdsFlatArray: Uint8Array, assetIds: number[], payload: Buffer, fee: number = 3000): Promise<algosdk.Transaction> {
     const appArgs = []
     const params = await this.algodClient.getTransactionParams().do()
-    params.fee = this.minFee
+    params.fee = fee
     params.flatFee = true
 
     if (this.dumpFailedTx) {

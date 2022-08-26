@@ -1,7 +1,7 @@
 
 # Pricecaster Service V2
 
-**Version 6.0.0**
+**Version 6.5.0**
 
 ## Introduction
 
@@ -87,6 +87,22 @@ As is shown in the table above, prices are reported in two-formats:
 
 * **Standard price**  This is the original price in the Pyth payload.  To obtain the real value you must use `exponent` field to set the decimal point as  `p' = p * 10^e` 
 * **C3-Normalized price** This is the price in terms of _picodollars per microunit_, and is targeted at C3 centric applications. The normalization is calculated as `p' = p*10^(12+e-d)` where `e` is the exponent and `d` the number of decimals the asset uses.  `d` is obtained by looking at ASA parameter `Decimals`.
+
+### Exponent and Decimal Ranges
+
+Pyth network exponents are at time of this writing in the range `e=[-8,8]` but future expansions can raise this to `e=[-12,12]`.  Decimals according to Algorand can be from zero (indivisible ASA) to 19.
+With this in mind, the normalized price format will yield the following values with boundary `d` and `e` values:
+
+| d | e | Result |
+|---|---|--------|
+|0  |-12| p' = p | 
+|0  |12 | p' = p*10^24 (Overflow). The maximum exponent usable with 0 decimals is +7. |
+|19 |-12| p' = p/10^19 =~ 0 |
+|19 |12 | p' = p*10^5 |
+|0  |0  | p' = p*10^12|
+|19 |0  | p' = 0| 
+
+
 
 
 ## Price-Explorer sample 
