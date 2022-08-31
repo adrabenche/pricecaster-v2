@@ -14,7 +14,7 @@
   "author": "Randlabs inc",
   "license": "ISC",
   "dependencies": {
-    "@certusone/wormhole-sdk": "^0.6.1",
+    "@certusone/wormhole-sdk": "^0.6.2",
     "@certusone/wormhole-spydk": "^0.0.1",
     "@pythnetwork/client": "^2.6.3",
     "@randlabs/js-config-reader": "^1.1.0",
