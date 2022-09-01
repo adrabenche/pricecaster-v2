@@ -18,8 +18,8 @@
  * limitations under the License.
  */
 
+import { CHAIN_ID_PYTHNET, CONTRACTS } from '@certusone/wormhole-sdk'
 import { Options } from '@randlabs/js-logger'
-import { Cluster } from '@solana/web3.js'
 
 export interface IAppSettings extends Record<string, unknown> {
   log: Options,
@@ -32,24 +32,32 @@ export interface IAppSettings extends Record<string, unknown> {
   },
   apps: {
     pricecasterAppId: bigint,
-    wormholeCoreAppId: bigint,
-    ownerAddress: string,
     ownerKeyFile: string,
     asaIdMapperAppId: number,
-    asaIdMapperDataNetwork: 'testnet' | 'mainnet'
-  },
-  pyth: {
-    chainId: number,
-    emitterAddress: string,
   },
   debug?: {
-    logAllVaa?: boolean,
     skipPublish?: boolean,
   },
   wormhole: {
     spyServiceHost: string
   },
-  symbols: {
-    sourceNetwork: Cluster
-  }
+  network: 'testnet' | 'mainnet'
+}
+
+const netUpper = (settings: IAppSettings) => settings.network.toUpperCase() as 'MAINNET' | 'TESTNET'
+
+export function getWormholeCoreAppId (settings: IAppSettings) {
+  return CONTRACTS[netUpper(settings)].algorand.core
+}
+
+export function getWormholeBridgeAppId (settings: IAppSettings) {
+  return CONTRACTS[netUpper(settings)].algorand.token_bridge
+}
+
+export function getPythnetEmitterAddress (settings: IAppSettings) {
+  return CONTRACTS[netUpper(settings)].pythnet.core
+}
+
+export function getPythChainId () {
+  return CHAIN_ID_PYTHNET
 }

@@ -19,7 +19,7 @@
  */
 
 import { IEngine } from './IEngine'
-import { IAppSettings } from '../common/settings'
+import { getPythnetEmitterAddress, getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { WormholePythPriceFetcher } from '../fetcher/WormholePythPriceFetcher'
 import { PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
 import * as Logger from '@randlabs/js-logger'
@@ -65,24 +65,19 @@ export class WormholeClientEngine implements IEngine {
       throw new Error('❌ Cannot read account key file: ' + e)
     }
 
-    Logger.info(`Gathering prices from Pyth network ${this.settings.symbols.sourceNetwork}...`)
-    const symbolInfo = new PythSymbolInfo(this.settings.symbols.sourceNetwork)
+    const NetworkToCluster = (network: 'testnet' | 'mainnet' )=> { return network === 'mainnet' ? 'mainnet-beta' : 'testnet' }
+    Logger.info(`Gathering prices from Pyth network ${NetworkToCluster(this.settings.network)}...`)
+    const symbolInfo = new PythSymbolInfo(NetworkToCluster(this.settings.network))
     await symbolInfo.load()
     Logger.info(`Loaded ${symbolInfo.getSymbolCount()} product(s)`)
 
-    const mapper = new Pyth2AsaMapper(this.settings.apps.asaIdMapperAppId,
-      algosdk.mnemonicToSecretKey(mnemo.toString()),
-      this.settings.algo.token,
-      this.settings.algo.api,
-      this.settings.algo.port,
-      this.settings.apps.asaIdMapperDataNetwork,
-      symbolInfo)
+    const mapper = new Pyth2AsaMapper(this.settings.network)
 
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')
       this.publisher = new NullPublisher()
     } else {
-      this.publisher = new PricecasterPublisher(this.settings.apps.wormholeCoreAppId,
+      this.publisher = new PricecasterPublisher(BigInt(getWormholeCoreAppId(this.settings)),
         this.settings.apps.pricecasterAppId,
         algosdk.mnemonicToSecretKey(mnemo.toString()),
         new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port),
@@ -90,9 +85,9 @@ export class WormholeClientEngine implements IEngine {
         this.settings.algo.dumpFailedTxDirectory
       )
     }
-    this.fetcher = new WormholePythPriceFetcher(this.settings.wormhole.spyServiceHost,
-      this.settings.pyth.chainId,
-      this.settings.pyth.emitterAddress,
+    this.fetcher = new WormholePythPriceFetcher(
+      getPythnetEmitterAddress(this.settings),
+      this.settings.wormhole.spyServiceHost,
       symbolInfo,
       mapper,
       this.publisher)

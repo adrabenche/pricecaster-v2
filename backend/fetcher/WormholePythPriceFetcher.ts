@@ -36,6 +36,7 @@ import { base58 } from 'ethers/lib/utils'
 import tools from '../../tools/app-tools'
 import { IPublisher } from 'backend/publisher/IPublisher'
 import { Pyth2AsaMapper } from 'backend/mapper/Pyth2AsaMapper'
+import { getPythChainId } from 'backend/common/settings'
 // import { sha512_256 } from 'js-sha512'
 
 const PYTH_PAYLOAD_HEADER = 0x50325748
@@ -45,18 +46,23 @@ const PYTH_ATTESTATION_PAYLOAD_ID = 2
 
 export class WormholePythPriceFetcher implements IPriceFetcher {
   private client: SpyRPCServiceClient
-  private pythEmitterAddress: { s: string, data: number[] }
+  private _pythEmitterAddress: { s: string, data: number[] }
   private stream: any
   private _hasData: boolean
   private coreWasm: any
   private data: PythData | undefined
   private lastVaaSeq: number = 0
 
-  constructor (readonly spyRpcServiceHost: string, readonly pythChainId: number, pythEmitterAddress: string, readonly symbolInfo: PythSymbolInfo, readonly mapper: Pyth2AsaMapper, readonly publisher: IPublisher) {
+  constructor (
+    readonly pythEmitterAddress: string,
+    readonly spyRpcServiceHost: string,
+    readonly symbolInfo: PythSymbolInfo,
+    readonly mapper: Pyth2AsaMapper,
+    readonly publisher: IPublisher) {
     setDefaultWasm('node')
     this._hasData = false
     this.client = createSpyRPCServiceClient(spyRpcServiceHost)
-    this.pythEmitterAddress = {
+    this._pythEmitterAddress = {
       data: Buffer.from(pythEmitterAddress, 'hex').toJSON().data,
       s: pythEmitterAddress
     }
@@ -70,8 +76,8 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
       filters:
         [{
           emitterFilter: {
-            chainId: this.pythChainId,
-            emitterAddress: this.pythEmitterAddress.s
+            chainId: getPythChainId(),
+            emitterAddress: this._pythEmitterAddress.s
           }
         }]
     }

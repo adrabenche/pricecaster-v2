@@ -1,6 +1,8 @@
 /**
  * Pricecaster Service.
  *
+ * Fetcher backend component.
+ *
  * Copyright 2022 Randlabs Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,16 +17,5 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { PythSymbolToAsaIdMainnet, PythSymbolToAsaIdTestnet } from './SymbolMap'
-
-export class Pyth2AsaMapper {
-  private mappingData: Map<string, number | undefined>
-  constructor (
-    sourceNetwork: 'mainnet' | 'testnet') {
-    this.mappingData = sourceNetwork === 'testnet' ? PythSymbolToAsaIdTestnet : PythSymbolToAsaIdMainnet
-  }
-
-  lookupAsa (symbol: string): number | undefined {
-    return this.mappingData.get(symbol)
-  }
-}
+export const PC_VERSION = '6.5.1'
+export const PC_COPYRIGHT = '(c) 2022 Randlabs Inc.'
