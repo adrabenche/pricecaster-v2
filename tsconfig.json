@@ -22,7 +22,7 @@
 		"removeComments": true,
 		"outDir": "build",
 		"types": ["node", "mocha"],
-		"lib": [ "ES2020.Promise" ],
+		"lib": [ "ES2020", "dom" ],
 	},
 	"include": [
 		"backend/**/*.ts",
