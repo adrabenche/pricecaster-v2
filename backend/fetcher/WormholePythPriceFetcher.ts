@@ -36,7 +36,8 @@ import { base58 } from 'ethers/lib/utils'
 import tools from '../../tools/app-tools'
 import { IPublisher } from 'backend/publisher/IPublisher'
 import { Pyth2AsaMapper } from 'backend/mapper/Pyth2AsaMapper'
-import { getPythChainId } from 'backend/common/settings'
+import { getPythChainId } from '../common/settings'
+import { sleep } from '../common/sleep'
 // import { sha512_256 } from 'js-sha512'
 
 const PYTH_PAYLOAD_HEADER = 0x50325748
@@ -45,7 +46,7 @@ const SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION = 0
 const PYTH_ATTESTATION_PAYLOAD_ID = 2
 
 export class WormholePythPriceFetcher implements IPriceFetcher {
-  private client: SpyRPCServiceClient
+  private client!: SpyRPCServiceClient
   private _pythEmitterAddress: { s: string, data: number[] }
   private stream: any
   private _hasData: boolean
@@ -61,12 +62,19 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
     readonly publisher: IPublisher) {
     setDefaultWasm('node')
     this._hasData = false
-    this.client = createSpyRPCServiceClient(spyRpcServiceHost)
+    this.spyRpcServiceHost = spyRpcServiceHost
     this._pythEmitterAddress = {
       data: Buffer.from(pythEmitterAddress, 'hex').toJSON().data,
       s: pythEmitterAddress
     }
     this.publisher = publisher
+  }
+
+  async suscribe (filter: any) {
+    this.stream = await subscribeSignedVAA(createSpyRPCServiceClient(this.spyRpcServiceHost), filter)
+    this.stream.on('data', async (data: { vaaBytes: Buffer }) => {
+      await this.onPythData(data.vaaBytes)
+    })
   }
 
   async start () {
@@ -81,22 +89,24 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
           }
         }]
     }
-    this.stream = await subscribeSignedVAA(this.client, filter)
 
-    Logger.info('Suscribed to data stream.')
+    await this.suscribe(filter)
 
-    this.stream.on('data', async (data: { vaaBytes: Buffer }) => {
-      await this.onPythData(data.vaaBytes)
-    })
-
-    this.stream.on('error', (e: Error) => {
+    this.stream.on('error', async (e: Error) => {
       Logger.error('Stream error: ' + e)
+      Logger.info('Retrying to connect...')
+      await sleep(2000)
+      this.stop()
+      await this.start()
     })
   }
 
   stop (): void {
     Logger.info('Stopping fetcher...')
-    this.stream.destroy()
+    if (this.stream) {
+      this.stream.destroy()
+      this.stream = null
+    }
     this._hasData = false
   }
 

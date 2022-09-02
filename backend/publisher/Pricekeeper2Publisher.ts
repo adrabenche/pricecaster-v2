@@ -1,7 +1,7 @@
 import algosdk, { Account, Algodv2, assignGroupID, waitForConfirmation } from 'algosdk'
 import { IPublisher, PublishInfo } from './IPublisher'
 import { StatusCode } from '../common/statusCodes'
-import { PythData } from 'backend/common/basetypes'
+import { PythData } from '../common/basetypes'
 import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/lib/cjs/algorand'
 import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
 import * as Logger from '@randlabs/js-logger'

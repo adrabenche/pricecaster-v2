@@ -42,10 +42,9 @@ const charm = require('charm')();
     settings = Config.get<IAppSettings>()
     await Logger.initialize(settings.log)
 
-
     Logger.info('Loaded settings. ')
     Logger.info(`Using network: ${settings.network}`)
-    Logger.info(`Algorand Client: API: ${settings.algo.token} Port: ${settings.algo.port}`)
+    Logger.info(`Algorand Client: API: ${settings.algo.api} Port: ${settings.algo.port}`)
     Logger.info(`Wormhole Appids: Core ${getWormholeCoreAppId(settings)}  Bridge ${getWormholeBridgeAppId(settings)} `)
     Logger.info(`Pricecaster Appid: ${settings.apps.pricecasterAppId}`)
     Logger.info(`Pyth network. ChainId: ${getPythChainId()}  Emitter: ${getPythnetEmitterAddress(settings)}`)

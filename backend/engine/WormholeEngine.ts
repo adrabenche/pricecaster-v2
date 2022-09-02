@@ -65,7 +65,7 @@ export class WormholeClientEngine implements IEngine {
       throw new Error('❌ Cannot read account key file: ' + e)
     }
 
-    const NetworkToCluster = (network: 'testnet' | 'mainnet' )=> { return network === 'mainnet' ? 'mainnet-beta' : 'testnet' }
+    const NetworkToCluster = (network: 'testnet' | 'mainnet') => { return network === 'mainnet' ? 'mainnet-beta' : 'testnet' }
     Logger.info(`Gathering prices from Pyth network ${NetworkToCluster(this.settings.network)}...`)
     const symbolInfo = new PythSymbolInfo(NetworkToCluster(this.settings.network))
     await symbolInfo.load()
