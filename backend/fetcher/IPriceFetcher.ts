@@ -24,6 +24,7 @@ export interface IPriceFetcher {
     start(): void
     stop(): void
     hasData(): boolean
+    shutdown(): void
 
     /**
      * Set price aggregation strategy for this fetcher.

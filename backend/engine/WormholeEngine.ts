@@ -45,11 +45,11 @@ export class WormholeClientEngine implements IEngine {
 
   async shutdown () {
     if (!this.shouldQuit) {
+      this.shouldQuit = true
       Logger.warn('Received SIGINT')
-      this.fetcher.stop()
+      this.fetcher.shutdown()
       this.publisher.stop()
       await Logger.finalize()
-      this.shouldQuit = true
     }
   }
 
@@ -99,9 +99,5 @@ export class WormholeClientEngine implements IEngine {
     this.fetcher.start()
 
     Logger.info('Ready.')
-
-    while (!this.shouldQuit) {
-      await sleep(1000)
-    }
   }
 }

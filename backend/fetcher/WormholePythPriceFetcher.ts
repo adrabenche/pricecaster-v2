@@ -26,7 +26,6 @@ import {
 import {
   createSpyRPCServiceClient, subscribeSignedVAA
 } from '@certusone/wormhole-spydk'
-import { SpyRPCServiceClient } from '@certusone/wormhole-spydk/lib/cjs/proto/spy/v1/spy'
 import { PythAttestation, PythData, VAA } from 'backend/common/basetypes'
 import { IStrategy } from '../strategy/strategy'
 import { IPriceFetcher } from './IPriceFetcher'
@@ -38,7 +37,6 @@ import { IPublisher } from 'backend/publisher/IPublisher'
 import { Pyth2AsaMapper } from 'backend/mapper/Pyth2AsaMapper'
 import { getPythChainId } from '../common/settings'
 import { sleep } from '../common/sleep'
-// import { sha512_256 } from 'js-sha512'
 
 const PYTH_PAYLOAD_HEADER = 0x50325748
 const SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION = 3
@@ -46,13 +44,12 @@ const SUPPORTED_MINOR_PYTH_PAYLOAD_VERSION = 0
 const PYTH_ATTESTATION_PAYLOAD_ID = 2
 
 export class WormholePythPriceFetcher implements IPriceFetcher {
-  private client!: SpyRPCServiceClient
-  private _pythEmitterAddress: { s: string, data: number[] }
   private stream: any
   private _hasData: boolean
   private coreWasm: any
   private data: PythData | undefined
   private lastVaaSeq: number = 0
+  private active: boolean
 
   constructor (
     readonly pythEmitterAddress: string,
@@ -61,12 +58,10 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
     readonly mapper: Pyth2AsaMapper,
     readonly publisher: IPublisher) {
     setDefaultWasm('node')
+    this.active = true
     this._hasData = false
     this.spyRpcServiceHost = spyRpcServiceHost
-    this._pythEmitterAddress = {
-      data: Buffer.from(pythEmitterAddress, 'hex').toJSON().data,
-      s: pythEmitterAddress
-    }
+    this.pythEmitterAddress = Buffer.from(base58.decode(pythEmitterAddress)).toString('hex')
     this.publisher = publisher
   }
 
@@ -78,6 +73,7 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   }
 
   async start () {
+    console.log(this.pythEmitterAddress)
     this.coreWasm = await importCoreWasm()
     // eslint-disable-next-line camelcase
     const filter = {
@@ -85,7 +81,7 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
         [{
           emitterFilter: {
             chainId: getPythChainId(),
-            emitterAddress: this._pythEmitterAddress.s
+            emitterAddress: this.pythEmitterAddress
           }
         }]
     }
@@ -96,8 +92,10 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
       Logger.error('Stream error: ' + e)
       Logger.info('Retrying to connect...')
       await sleep(2000)
-      this.stop()
-      await this.start()
+      if (this.active) {
+        this.stop()
+        await this.start()
+      }
     })
   }
 
@@ -108,6 +106,11 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
       this.stream = null
     }
     this._hasData = false
+  }
+
+  shutdown (): void {
+    this.active = false
+    this.stop()
   }
 
   setStrategy (s: IStrategy) {
@@ -125,6 +128,10 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   }
 
   private async onPythData (vaaBytes: Buffer) {
+    if (!this.active) {
+      return
+    }
+
     const v: VAA = this.coreWasm.parse_vaa(new Uint8Array(vaaBytes))
     if (v.sequence > this.lastVaaSeq) {
       this.lastVaaSeq = v.sequence
