@@ -21,11 +21,10 @@
  */
 
 import * as Config from '@randlabs/js-config-reader'
-import { getPythChainId, getPythnetEmitterAddress, getWormholeBridgeAppId, getWormholeCoreAppId, IAppSettings } from './common/settings'
+import { getWormholeBridgeAppId, getWormholeCoreAppId, IAppSettings } from './common/settings'
 import { exit } from 'process'
 import { WormholeClientEngine } from './engine/WormholeEngine'
 import * as Logger from '@randlabs/js-logger'
-import { CHAIN_ID_PYTHNET, CONTRACTS } from '@certusone/wormhole-sdk'
 import { PC_COPYRIGHT, PC_VERSION } from './common/version'
 const charm = require('charm')();
 
@@ -47,7 +46,11 @@ const charm = require('charm')();
     Logger.info(`Algorand Client: API: ${settings.algo.api} Port: ${settings.algo.port}`)
     Logger.info(`Wormhole Appids: Core ${getWormholeCoreAppId(settings)}  Bridge ${getWormholeBridgeAppId(settings)} `)
     Logger.info(`Pricecaster Appid: ${settings.apps.pricecasterAppId}`)
-    Logger.info(`Pyth network. ChainId: ${getPythChainId()}  Emitter: ${getPythnetEmitterAddress(settings)}`)
+    Logger.info('Pyth network filters: ')
+
+    settings.filters[settings.network].forEach((filter) => {
+      Logger.info(`  ChainId: ${filter.chain_id}  Emitter: ${filter.emitter_address}`)
+    })
   } catch (e: any) {
     console.error('Cannot initialize configuration: ' + e.toString())
     exit(1)

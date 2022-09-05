@@ -18,8 +18,10 @@
  * limitations under the License.
  */
 
-import { CHAIN_ID_PYTHNET, CONTRACTS } from '@certusone/wormhole-sdk'
+import { CONTRACTS } from '@certusone/wormhole-sdk'
 import { Options } from '@randlabs/js-logger'
+
+export type Filter = { 'chain_id': number, 'emitter_address': string }
 
 export interface IAppSettings extends Record<string, unknown> {
   log: Options,
@@ -41,6 +43,10 @@ export interface IAppSettings extends Record<string, unknown> {
   wormhole: {
     spyServiceHost: string
   },
+  filters: {
+    'mainnet': Filter[]
+    'testnet': Filter[]
+  },
   network: 'testnet' | 'mainnet'
 }
 
@@ -54,10 +60,6 @@ export function getWormholeBridgeAppId (settings: IAppSettings) {
   return CONTRACTS[netUpper(settings)].algorand.token_bridge
 }
 
-export function getPythnetEmitterAddress (settings: IAppSettings) {
-  return CONTRACTS[netUpper(settings)].pythnet.core
-}
-
-export function getPythChainId () {
-  return CHAIN_ID_PYTHNET
+export function getPythFilter (settings: IAppSettings) {
+  return settings.filters[settings.network]
 }

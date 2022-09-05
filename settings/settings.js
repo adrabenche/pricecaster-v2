@@ -22,6 +22,28 @@ module.exports = {
     dumpFailedTx: true,
     dumpFailedTxDirectory: './dump'
   },
+  filters: {
+    mainnet: [
+      {
+        chain_id: 1,
+        emitter_address: '6bb14509a612f01fbbc4cffeebd4bbfb492a86df717ebe92eb6df432a3f00a25'
+      },
+      {
+        chain_id: 26,
+        emitter_address: 'f8cd23c2ab91237730770bbea08d61005cdda0984348f3f6eecb559638c0bba0'
+      }
+    ],
+    testnet: [
+      {
+        chain_id: 1,
+        emitter_address: 'f346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
+      },
+      {
+        chain_id: 26,
+        emitter_address: 'a27839d641b07743c0cb5f68c51f8cd31d2c0762bec00dc6fcd25433ef1ab5b6'
+      }
+    ]
+  },
   apps: {
     pricecasterAppId: 107510319,
     ownerKeyFile: './keys/owner.key'

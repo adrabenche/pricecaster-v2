@@ -35,8 +35,9 @@ import { base58 } from 'ethers/lib/utils'
 import tools from '../../tools/app-tools'
 import { IPublisher } from 'backend/publisher/IPublisher'
 import { Pyth2AsaMapper } from 'backend/mapper/Pyth2AsaMapper'
-import { getPythChainId } from '../common/settings'
 import { sleep } from '../common/sleep'
+import { Filter } from '../common/settings'
+import { FilterEntry } from '@certusone/wormhole-spydk/lib/cjs/proto/spy/v1/spy'
 
 const PYTH_PAYLOAD_HEADER = 0x50325748
 const SUPPORTED_MAJOR_PYTH_PAYLOAD_VERSION = 3
@@ -50,9 +51,17 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
   private data: PythData | undefined
   private lastVaaSeq: number = 0
   private active: boolean
+  filter: {
+    filters: {
+      emitterFilter: {
+        chainId: number
+        emitterAddress: string
+      }
+    }[]
+  }
 
   constructor (
-    readonly pythEmitterAddress: string,
+    readonly pythFilter: Filter[],
     readonly spyRpcServiceHost: string,
     readonly symbolInfo: PythSymbolInfo,
     readonly mapper: Pyth2AsaMapper,
@@ -61,32 +70,43 @@ export class WormholePythPriceFetcher implements IPriceFetcher {
     this.active = true
     this._hasData = false
     this.spyRpcServiceHost = spyRpcServiceHost
-    this.pythEmitterAddress = Buffer.from(base58.decode(pythEmitterAddress)).toString('hex')
     this.publisher = publisher
+
+    const filters: {
+      emitterFilter: {
+        chainId: number,
+        emitterAddress: string
+      }
+    }[] = []
+
+    this.pythFilter.forEach(e => {
+      filters.push({
+        emitterFilter: {
+          chainId: e.chain_id,
+          emitterAddress: e.emitter_address
+        }
+      })
+    })
+
+    this.filter = { filters }
   }
 
-  async suscribe (filter: any) {
+  private async suscribe (filter: any) {
     this.stream = await subscribeSignedVAA(createSpyRPCServiceClient(this.spyRpcServiceHost), filter)
-    this.stream.on('data', async (data: { vaaBytes: Buffer }) => {
-      await this.onPythData(data.vaaBytes)
-    })
+    if (this.stream) {
+      Logger.info(`Subscribed to signed VAA. Spy RPC host: ${this.spyRpcServiceHost} filter: ${JSON.stringify(filter)}`)
+      this.stream.on('data', async (data: { vaaBytes: Buffer }) => {
+        await this.onPythData(data.vaaBytes)
+      })
+    }
   }
 
   async start () {
-    console.log(this.pythEmitterAddress)
+    // console.log(this.pythEmitterAddress)
     this.coreWasm = await importCoreWasm()
     // eslint-disable-next-line camelcase
-    const filter = {
-      filters:
-        [{
-          emitterFilter: {
-            chainId: getPythChainId(),
-            emitterAddress: this.pythEmitterAddress
-          }
-        }]
-    }
 
-    await this.suscribe(filter)
+    await this.suscribe(this.filter)
 
     this.stream.on('error', async (e: Error) => {
       Logger.error('Stream error: ' + e)

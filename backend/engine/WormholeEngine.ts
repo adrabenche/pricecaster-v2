@@ -19,11 +19,10 @@
  */
 
 import { IEngine } from './IEngine'
-import { getPythnetEmitterAddress, getWormholeCoreAppId, IAppSettings } from '../common/settings'
+import { getPythFilter, getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { WormholePythPriceFetcher } from '../fetcher/WormholePythPriceFetcher'
 import { PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
 import * as Logger from '@randlabs/js-logger'
-import { sleep } from '../common/sleep'
 import { PythSymbolInfo } from './SymbolInfo'
 import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
 import { NullPublisher } from '../publisher/NullPublisher'
@@ -86,7 +85,7 @@ export class WormholeClientEngine implements IEngine {
       )
     }
     this.fetcher = new WormholePythPriceFetcher(
-      getPythnetEmitterAddress(this.settings),
+      getPythFilter(this.settings),
       this.settings.wormhole.spyServiceHost,
       symbolInfo,
       mapper,
