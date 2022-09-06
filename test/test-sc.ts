@@ -1,17 +1,33 @@
 /* eslint-disable no-unused-expressions */
 import PricecasterLib, { PRICECASTER_CI } from '../lib/pricecaster'
 import tools from '../tools/app-tools'
-import algosdk, { Transaction } from 'algosdk'
+import algosdk, { Account, generateAccount, makePaymentTxnWithSuggestedParams, Transaction } from 'algosdk'
 const { expect } = require('chai')
 const chai = require('chai')
 const spawnSync = require('child_process').spawnSync
 const testConfig = require('./test-config')
 chai.use(require('chai-as-promised'))
 
+// ===============================================================================================================
+
 let pclib: PricecasterLib
 let algodClient: algosdk.Algodv2
 let ownerAccount: algosdk.Account
 type AssetMapEntry = { decimals: number, assetId: number | undefined, samplePrice: number, exponent: number }
+
+type StoredPriceData = {
+  pythPrice: bigint,
+  normalizedPrice: bigint,
+  confidence: bigint,
+  exponent: number,
+  priceEMA: bigint,
+  confEMA: bigint,
+  status: number,
+  timestamp: bigint,
+  productPriceKey: Uint8Array
+}
+
+// ===============================================================================================================
 
 async function createPricecasterApp (coreId: number) {
   const out = spawnSync(testConfig.PYTHON_BIN, [testConfig.PYTEALSOURCE])
@@ -31,6 +47,14 @@ async function createPricecasterApp (coreId: number) {
   const txResponse = await pclib.waitForTransactionResponse(txId)
   const pkAppId = pclib.appIdFromCreateAppResponse(txResponse)
   pclib.setAppId(PRICECASTER_CI, pkAppId)
+
+  console.log('Funding with min balance...')
+
+  const paymentTx = makePaymentTxnWithSuggestedParams(ownerAccount.addr,
+    algosdk.getApplicationAddress(pkAppId), 100000, undefined, undefined, await algodClient.getTransactionParams().do())
+
+  const paymentTxId = await algodClient.sendRawTransaction(paymentTx.signTxn(ownerAccount.sk)).do()
+  await algosdk.waitForConfirmation(algodClient, paymentTxId.txId, 1)
   return pkAppId
 }
 
@@ -85,13 +109,13 @@ function prepareStoreTxParameters (assetMap: AssetMapEntry[], statusByte?: strin
     const conf = Buffer.from('cc000000000000ff', 'hex')
     const exp = Buffer.alloc(4)
     exp.writeInt32BE(val.exponent)
-    const ema = Buffer.from('00000000000000ff00000000000000ff', 'hex')
+    const ema = Buffer.from('111111111111111ff22222222222222ff', 'hex')
     const stat = Buffer.from(statusByte ?? '01', 'hex')
     const numpub = Buffer.from('00000004', 'hex')
-    const maxnumpub = Buffer.from('00000004', 'hex')
+    const maxnumpub = Buffer.from('00000006', 'hex')
     const time = Buffer.from('000000006283efc2', 'hex')
-    const pubtime = Buffer.from('000000006283efc2', 'hex')
-    const remfields = Buffer.from('000000006283efc200000000008823d60000000000004be2', 'hex')
+    const pubtime = Buffer.from('000000006283efc3', 'hex')
+    const remfields = Buffer.from('000000006283efc400000000008823d60000000000004be2', 'hex')
 
     payload = Buffer.concat([payload, productId, priceId, price, conf, exp, ema, stat, numpub, maxnumpub, time, pubtime, remfields])
   }
@@ -105,14 +129,12 @@ function prepareStoreTxParameters (assetMap: AssetMapEntry[], statusByte?: strin
     offset += 8
   })
 
-  /// console.log(payload.toString('hex'))
-
   return { payload, flatU8ArrayAssetIds, assetIds }
 }
 
 async function createAssets (assetMap: AssetMapEntry[]) {
   for (const [i, val] of assetMap.entries()) {
-    if (assetMap[i].assetId !== 0) {
+    if (assetMap[i].assetId === undefined) {
       assetMap[i].assetId = await createAsset(val.decimals)
     }
   }
@@ -120,9 +142,10 @@ async function createAssets (assetMap: AssetMapEntry[]) {
 
 async function testOkCase (decimals: number,
   samplePrice: number,
-  exponent: number) {
+  exponent: number,
+  assetIdOverride?: number): Promise<StoredPriceData> {
   const assetMap = [
-    { decimals, assetId: undefined, samplePrice, exponent }
+    { decimals, assetId: assetIdOverride, samplePrice, exponent }
   ]
 
   await createAssets(assetMap)
@@ -140,34 +163,59 @@ async function testOkCase (decimals: number,
   const data = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId(PRICECASTER_CI), ownerAccount.addr, assetMap[0].assetId!)
   expect(data).not.to.be.undefined
 
-  const pythPrice = Buffer.from(data!, 'base64').subarray(0, 8).readBigUint64BE()
-  const normalizedPrice = Buffer.from(data!, 'base64').subarray(8, 16).readBigUint64BE()
-
-  const exp = Buffer.from(data!, 'base64').subarray(24, 28).readInt32BE()
+  const dataBuf = Buffer.from(data!, 'base64')
+  const pythPrice = dataBuf.subarray(0, 8).readBigUint64BE()
+  const normalizedPrice = dataBuf.subarray(8, 16).readBigUint64BE()
+  const confidence = dataBuf.subarray(16, 24).readBigUint64BE()
+  const exp = dataBuf.subarray(24, 28).readInt32BE()
+  const priceEMA = dataBuf.subarray(28, 36).readBigUint64BE()
+  const confEMA = dataBuf.subarray(36, 44).readBigUint64BE()
+  const status = dataBuf.readUInt8(44)
+  const timestamp = dataBuf.subarray(45, 53).readBigUint64BE()
+  const productPriceKey = dataBuf.subarray(53)
 
   // console.log(normalizedPrice)
   expect(pythPrice).to.equal(BigInt(assetMap[0].samplePrice))
-  expect(normalizedPrice).to.equal(BigInt(Math.round(assetMap[0].samplePrice * Math.pow(10, (12 + assetMap[0].exponent - (assetMap[0].decimals === -1 ? 6 : assetMap[0].decimals))))))
+  expect(normalizedPrice).to.equal(BigInt(Math.round(assetMap[0].samplePrice * Math.pow(10, (12 + assetMap[0].exponent - (assetIdOverride === 0 ? 6 : assetMap[0].decimals))))))
   expect(exp).to.equal(assetMap[0].exponent)
+  expect(confidence).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8))
+  expect(priceEMA).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4))
+  expect(confEMA).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 8 + 4))
+  expect(status).to.equal(txParams.payload.readUInt8(15 + 64 + 8 + 8 + 4 + 8 + 8))
+  expect(timestamp).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4 + 8 + 8 + 1 + 8))
+
+  return {
+    pythPrice,
+    normalizedPrice,
+    confidence,
+    exponent: exp,
+    priceEMA,
+    confEMA,
+    status,
+    timestamp,
+    productPriceKey
+  }
 }
 
 async function testFailCase (decimals: number,
   // eslint-disable-next-line camelcase
   samplePrice: number,
-  exponent: number) {
+  exponent: number,
+  assetIdOverride?: number,
+  sender: Account = ownerAccount) {
   const assetMap = [
-    { decimals, assetId: undefined, samplePrice, exponent }
+    { decimals, assetId: assetIdOverride, samplePrice, exponent }
   ]
 
   await createAssets(assetMap)
   const txParams = prepareStoreTxParameters(assetMap)
 
-  const tx = await pclib.makePriceStoreTx(ownerAccount.addr,
+  const tx = await pclib.makePriceStoreTx(sender.addr,
     txParams.flatU8ArrayAssetIds,
     txParams.assetIds,
     txParams.payload)
-
-  await expect(algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()).to.be.rejectedWith(/logic eval error/)
+  
+  await expect(algodClient.sendRawTransaction(tx.signTxn(sender.sk)).do()).to.be.rejectedWith(/logic eval error/)
 }
 
 // ===============================================================================================================
@@ -260,5 +308,22 @@ describe('Pricecaster App Tests', function () {
 
   it('Must handle zero exponent case (d=19)', async function () {
     await testOkCase(19, 1, 0)
+  })
+
+  it('Must handle asset 0 (ALGO) as 6 decimal asset', async function () {
+    // Will substitute bogus 9999999999 decimals to 6 since asset 0 is interpreted as 6 decimal (ALGO)
+    await testOkCase(9999999999, 100000, -8, 0)
+  })
+
+  it('Must fail to store unknown asset ID', async function () {
+    await testFailCase(4, 1000, -8, 99999999999)
+  })
+
+  it('Must fail to store from non-creator account', async function () {
+    const altAccount = generateAccount()
+    const paymentTx = makePaymentTxnWithSuggestedParams(ownerAccount.addr, altAccount.addr, 400000, undefined, undefined, await algodClient.getTransactionParams().do())
+    const paymentTxId = await algodClient.sendRawTransaction(paymentTx.signTxn(ownerAccount.sk)).do()
+    await algosdk.waitForConfirmation(algodClient, paymentTxId.txId, 4)
+    await testFailCase(4, 1, -8, undefined, altAccount)
   })
 })
