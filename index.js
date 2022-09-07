@@ -1,1 +1,1 @@
-export { default as PriceCasterLib } from './dist/lib/pricecaster'
+module.exports = require('./dist/lib/pricecaster')
