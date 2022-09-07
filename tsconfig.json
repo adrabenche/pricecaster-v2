@@ -20,7 +20,7 @@
 		"noEmitOnError": true,
 		"resolveJsonModule": true,
 		"removeComments": true,
-		"outDir": "build",
+		"outDir": "dist",
 		"types": ["node", "mocha"],
 		"lib": [ "ES2020", "dom" ],
 	},
@@ -30,7 +30,7 @@
 		"tools/**/*.ts"
 	],
 	"exclude": [
-		"build",
+		"dist",
 		"node_modules",
 		"test",
 		"**/*.spec.ts"

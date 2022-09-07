@@ -1,14 +1,14 @@
 {
   "name": "pricecaster",
-  "version": "6.5.0",
+  "version": "6.5.5",
   "description": "Pricecaster Service",
   "main": "index.js",
   "scripts": {
     "compile": "tsc",
     "build": "rimraf build && npm run compile",
     "prepack": "npm run build",
-    "start": "npm run compile && cross-env PRICECASTER_SETTINGS=./settings/settings.js node build/backend/main.js",
-    "start-production": "npm run compile && cross-env NODE_ENV='production' PRICECASTER_SETTINGS=./settings/settings.js node build/backend/main.js",
+    "start": "npm run compile && cross-env PRICECASTER_SETTINGS=./settings/settings.js node dist/backend/main.js",
+    "start-production": "npm run compile && cross-env NODE_ENV='production' PRICECASTER_SETTINGS=./settings/settings.js node dist/backend/main.js",
     "test-sc": "mocha -r ts-node/register test/test-sc.ts --timeout 60000"
   },
   "author": "Randlabs inc",
@@ -48,5 +48,9 @@
     "mocha": "^9.2.1",
     "rimraf": "^3.0.2",
     "ts-node": "^10.7.0"
-  }
+  },
+  "files": [
+    "dist/lib/",
+    "teal/pyteal/*.py"
+  ]
 }

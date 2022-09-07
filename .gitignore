@@ -111,7 +111,7 @@ keys/*
 
 DEPLOY-*
 VAA-VERIFY-*
-build/*
+dist/*
 *.pyc
 
 *.teal
