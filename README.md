@@ -1,7 +1,29 @@
 
 # Pricecaster Service V2
 
-**Version 6.5.0**
+**Version 6.6.0**
+
+- [Pricecaster Service V2](#pricecaster-service-v2)
+  * [Introduction](#introduction)
+  * [System Overview](#system-overview)
+    + [Wormhole Core Contracts](#wormhole-core-contracts)
+    + [VAA Structure](#vaa-structure)
+  * [Pricecaster Onchain App](#pricecaster-onchain-app)
+    + [Price storage formats](#price-storage-formats)
+    + [Exponent and Decimal Ranges](#exponent-and-decimal-ranges)
+  * [Installation](#installation)
+  * [Deployment of Applications](#deployment-of-applications)
+  * [Backend Configuration](#backend-configuration)
+    + [Diagnosing failed transactions](#diagnosing-failed-transactions)
+  * [Running the system](#running-the-system)
+  * [Tests](#tests)
+  * [Guardian Spy Setup](#guardian-spy-setup)
+  * [Pricecaster SDK](#pricecaster-sdk)
+  * [Appendix](#appendix)
+    + [Common errors](#common-errors)
+    + [Sample Pyth VAA payload](#sample-pyth-vaa-payload)
+
+<small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
 
 ## Introduction
 
@@ -103,11 +125,6 @@ With this in mind, the normalized price format will yield the following values w
 |19 |0  | p' = 0| 
 
 
-
-
-## Price-Explorer sample 
-
-The `samples` subdirectory contains a React app showing how consumers can fetch symbols, price information from the contract,  and display this information in real-time. 
 
 ## Installation
 
@@ -280,7 +297,13 @@ Check the `package.json` file for `npm run start-xxx`  automated commands.
 
 ## Tests
 
-**Tests are currently not working and are a legacy of the older design. This needs to be fixed**
+Requirement: Algorand Sandbox.
+
+Run the Pricecaster contract tests with:
+
+```
+npm run test-sc
+```
 
 Backend tests will come shortly.
 
@@ -331,6 +354,11 @@ docker run -ti guardian-mainnet --nodeKey /tmp/node.key --spyRPC [::]:7074 --net
 For deployment, use `-p 7074` to expose ports; remove `-ti` and add `-d` to leave the container running in the background. (detached mode)
 
 
+## Pricecaster SDK
+
+A Work-in-progress Javascript SDK exists, along with a React app showing how consumers can fetch symbols, price information from the contract,  and display this information in real-time. 
+Refer to the `pricecaster-sdk` repository.
+
 ## Appendix
 
 ### Common errors
@@ -379,3 +407,8 @@ fffffff8                                                            exponent
 
 
 ```
+
+
+
+
+
