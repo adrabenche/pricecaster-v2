@@ -6,6 +6,7 @@
   "scripts": {
     "compile": "tsc",
     "build": "rimraf build && npm run compile",
+    "prepare": "npm run build",
     "prepack": "npm run build",
     "start": "npm run compile && cross-env PRICECASTER_SETTINGS=./settings/settings.js node dist/backend/main.js",
     "start-production": "npm run compile && cross-env NODE_ENV='production' PRICECASTER_SETTINGS=./settings/settings.js node dist/backend/main.js",
@@ -50,7 +51,7 @@
     "ts-node": "^10.7.0"
   },
   "files": [
-    "dist/lib/",
+    "dist/lib/*",
     "teal/pyteal/*.py"
   ]
 }
