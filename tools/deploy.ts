@@ -98,7 +98,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   }
 
   try {
-    globalMnemo = fs.readFileSync(keyfile).toString()
+    globalMnemo = fs.readFileSync(keyfile).toString().trim()
     const algodClient = new algosdk.Algodv2(netconfig.token, netconfig.api, netconfig.port)
     const fromAddress = algosdk.mnemonicToSecretKey(globalMnemo).addr
 
