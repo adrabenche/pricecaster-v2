@@ -20,6 +20,8 @@
  * limitations under the License.
  */
 
+export type PriceId = string
+
 export type VAA = {
   version: number,
   guardian_set_index: number,

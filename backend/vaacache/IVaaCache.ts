@@ -17,5 +17,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export const PC_VERSION = '7.0.0'
-export const PC_COPYRIGHT = 'Copyright (c) 2022, 23 Randlabs Inc.'
+
+import { PriceId } from '../common/basetypes'
+
+export interface IVaaCache {
+    store(vaa: Uint8Array, priceid: PriceId): void
+    fetch(priceid: PriceId): Uint8Array
+}

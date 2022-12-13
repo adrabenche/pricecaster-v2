@@ -20,7 +20,7 @@
 
 import { IEngine } from './IEngine'
 import { getPythFilter, getWormholeCoreAppId, IAppSettings } from '../common/settings'
-import { WormholePythPriceFetcher } from '../fetcher/WormholePythPriceFetcher'
+import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
 import { PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { PythSymbolInfo } from './SymbolInfo'
@@ -29,12 +29,15 @@ import { NullPublisher } from '../publisher/NullPublisher'
 import { Algodv2 } from 'algosdk'
 import { IPublisher } from 'backend/publisher/IPublisher'
 import { IPriceFetcher } from 'backend/fetcher/IPriceFetcher'
+import { VaaCache } from '../vaacache/vaacache'
+import { IVaaCache } from '../vaacache/IVaaCache'
 const fs = require('fs')
 const algosdk = require('algosdk')
 
 export class WormholeClientEngine implements IEngine {
+  private fetcher!: PythPriceServiceFetcher
   private publisher!: IPublisher
-  private fetcher!: IPriceFetcher
+  private vaaCache!: IVaaCache
   private settings: IAppSettings
   private shouldQuit: boolean
   constructor (settings: IAppSettings) {
@@ -47,7 +50,6 @@ export class WormholeClientEngine implements IEngine {
       this.shouldQuit = true
       Logger.warn('Received SIGINT')
       this.fetcher.shutdown()
-      this.publisher.stop()
       await Logger.finalize()
     }
   }
@@ -70,26 +72,23 @@ export class WormholeClientEngine implements IEngine {
     await symbolInfo.load()
     Logger.info(`Loaded ${symbolInfo.getSymbolCount()} product(s)`)
 
-    const mapper = new Pyth2AsaMapper(this.settings.network)
+    //const mapper = new Pyth2AsaMapper(this.settings.network)
 
-    if (this.settings.debug?.skipPublish) {
-      Logger.warn('Using Null Publisher')
+    this.vaaCache = new VaaCache()
+
+    // if (this.settings.debug?.skipPublish) {
+      // Logger.warn('Using Null Publisher')
       this.publisher = new NullPublisher()
-    } else {
-      this.publisher = new PricecasterPublisher(BigInt(getWormholeCoreAppId(this.settings)),
-        this.settings.apps.pricecasterAppId,
-        algosdk.mnemonicToSecretKey(mnemo.toString()),
-        new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port),
-        this.settings.algo.dumpFailedTx,
-        this.settings.algo.dumpFailedTxDirectory
-      )
-    }
-    this.fetcher = new WormholePythPriceFetcher(
-      getPythFilter(this.settings),
-      this.settings.wormhole.spyServiceHost,
-      symbolInfo,
-      mapper,
-      this.publisher)
+    // } else {
+      // this.publisher = new PricecasterPublisher(BigInt(getWormholeCoreAppId(this.settings)),
+        // this.settings.apps.pricecasterAppId,
+        // algosdk.mnemonicToSecretKey((mnemo.toString()).trim()),
+        // new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port),
+        // this.settings.algo.dumpFailedTx,
+        // this.settings.algo.dumpFailedTxDirectory
+      // )
+    // }
+    this.fetcher = new PythPriceServiceFetcher(this.settings, this.vaaCache)
 
     Logger.info('Waiting for publisher to boot...')
     this.publisher.start()

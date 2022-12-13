@@ -24,6 +24,21 @@ import { Options } from '@randlabs/js-logger'
 export type Filter = { 'chain_id': number, 'emitter_address': string }
 
 export interface IAppSettings extends Record<string, unknown> {
+  pyth: {
+    priceService: {
+      mainnet: string,
+      testnet: string,
+      pollIntervalMs: number
+    },
+    priceServiceConfiguration?: {
+      timeout?: number,
+      httpRetries?: number
+      /*
+      logger?: Logger;
+      verbose?: boolean;
+      */
+    }
+  }
   log: Options,
   algo: {
     token: string,

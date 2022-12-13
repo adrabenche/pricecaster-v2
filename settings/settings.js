@@ -1,4 +1,11 @@
 module.exports = {
+  pyth: {
+    priceService: {
+      mainnet: 'https://xc-mainnet.pyth.network',
+      testnet: 'https://xc-testnet.pyth.network',
+      pollInterval: 1000
+    }
+  },
   log: {
     appName: 'pricecaster-v2',
     disableConsoleLog: false,
@@ -45,7 +52,7 @@ module.exports = {
     ]
   },
   apps: {
-    pricecasterAppId: 107510319,
+    pricecasterAppId: 123328237,
     ownerKeyFile: './keys/owner.key'
   },
   wormhole: {
