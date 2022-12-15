@@ -19,9 +19,9 @@
  */
 
 import { IEngine } from './IEngine'
-import { getPythFilter, getWormholeCoreAppId, IAppSettings } from '../common/settings'
+import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
-import { PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
+import { PricecasterPublisher } from '../publisher/C3Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { PythSymbolInfo } from './SymbolInfo'
 import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
@@ -88,7 +88,7 @@ export class WormholeClientEngine implements IEngine {
         // this.settings.algo.dumpFailedTxDirectory
       // )
     // }
-    this.fetcher = new PythPriceServiceFetcher(this.settings, this.vaaCache)
+    this.fetcher = new PythPriceServiceFetcher(this.settings)
 
     Logger.info('Waiting for publisher to boot...')
     this.publisher.start()

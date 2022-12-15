@@ -18,7 +18,6 @@
  * limitations under the License.
  */
 
-
 export interface IPriceFetcher {
     start(): void
     stop(): void
