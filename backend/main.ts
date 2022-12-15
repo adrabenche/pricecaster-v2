@@ -33,7 +33,7 @@ const charm = require('charm')();
   charm.reset()
   charm.foreground('cyan').display('bright')
   console.log(`Pricecaster Service Backend  Version ${PC_VERSION} -- ${PC_COPYRIGHT}\n`)
-  charm.foreground('white')
+  charm.foreground('white').display('dim')
 
   let settings: IAppSettings
   try {
@@ -46,11 +46,6 @@ const charm = require('charm')();
     Logger.info(`Algorand Client: API: ${settings.algo.api} Port: ${settings.algo.port}`)
     Logger.info(`Wormhole Appids: Core ${getWormholeCoreAppId(settings)}  Bridge ${getWormholeBridgeAppId(settings)} `)
     Logger.info(`Pricecaster Appid: ${settings.apps.pricecasterAppId}`)
-    Logger.info('Pyth network filters: ')
-
-    settings.filters[settings.network].forEach((filter) => {
-      Logger.info(`  ChainId: ${filter.chain_id}  Emitter: ${filter.emitter_address}`)
-    })
   } catch (e: any) {
     console.error('Cannot initialize configuration: ' + e.toString())
     exit(1)

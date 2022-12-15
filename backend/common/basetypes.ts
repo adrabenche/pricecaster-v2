@@ -20,6 +20,10 @@
  * limitations under the License.
  */
 
+export type PriceId = string
+
+export type DataReadyCallback = (vaaList: Buffer[]) => Promise<void>
+
 export type VAA = {
   version: number,
   guardian_set_index: number,
@@ -33,8 +37,8 @@ export type VAA = {
   payload: Buffer
 }
 export type PythAttestation = {
-  symbol?: string,
-  asaId?: number,
+  asaId: number,
+  symbol: string,
   productId: Buffer,
   priceId: Buffer,
   price: BigInt,

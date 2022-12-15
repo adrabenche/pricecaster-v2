@@ -18,19 +18,11 @@
  * limitations under the License.
  */
 
-import { IStrategy } from '../strategy/strategy'
-
 export interface IPriceFetcher {
     start(): void
     stop(): void
     hasData(): boolean
     shutdown(): void
-
-    /**
-     * Set price aggregation strategy for this fetcher.
-     * @param IStrategy The local price aggregation strategy
-     */
-    setStrategy(s: IStrategy): void
 
     /**
      * Get the current data.

@@ -1,9 +1,9 @@
-import { PriceTicker } from '../common/priceTicker'
-import { StrategyBase } from './strategyBase'
+/* eslint-disable func-call-spacing */
+/* eslint-disable no-unused-vars */
 /**
  * Pricecaster Service.
  *
- * Fetcher backend component.
+ * Client for Pyth Price-Service.
  *
  * Copyright 2022 Randlabs Inc.
  *
@@ -20,14 +20,11 @@ import { StrategyBase } from './strategyBase'
  * limitations under the License.
  */
 
-/**
- * This strategy just caches the last provided price,
- * acting as a single-item buffer.
- */
-export class StrategyLastPrice extends StrategyBase {
-  getPrice (): PriceTicker | undefined {
-    const ret = this.buffer[this.buffer.length - 1]
-    this.clearBuffer()
-    return ret
+import { HexString, PriceServiceConnection } from '@pythnetwork/pyth-common-js'
+
+export class PriceServiceConnection2 extends PriceServiceConnection {
+  public async getLatestVaasForIds (priceIds: HexString[]): Promise<Buffer[]> {
+    const vaas = await this.getLatestVaas(priceIds)
+    return vaas.map((v) => Buffer.from(v, 'base64'))
   }
 }

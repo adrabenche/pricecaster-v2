@@ -1,7 +1,7 @@
 /**
  * Pricecaster Service.
  *
- * Fetcher backend component.
+ * VAA Cache Implementation
  *
  * Copyright 2022 Randlabs Inc.
  *
@@ -17,5 +17,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export const PC_VERSION = '7.0.0'
-export const PC_COPYRIGHT = 'Copyright (c) 2022, 23 Randlabs Inc.'
+
+import { PriceId } from '../common/basetypes'
+import { IVaaCache } from './IVaaCache'
+
+export class VaaCache implements IVaaCache {
+  private vaaMap: Map<PriceId, Uint8Array>
+
+  constructor () {
+    this.vaaMap = new Map<PriceId, Uint8Array>()
+  }
+
+  store (vaa: Uint8Array, priceid: PriceId): void {
+    this.vaaMap.set(priceid, vaa)
+  }
+
+  fetch (priceid: PriceId): Uint8Array {
+    const vaa = this.vaaMap.get(priceid)
+    if (!vaa) {
+      throw new Error('There is no Vaa cached for such PriceId')
+    }
+    return vaa
+  }
+}

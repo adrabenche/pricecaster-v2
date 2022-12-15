@@ -24,6 +24,22 @@ import { Options } from '@randlabs/js-logger'
 export type Filter = { 'chain_id': number, 'emitter_address': string }
 
 export interface IAppSettings extends Record<string, unknown> {
+  pyth: {
+    priceService: {
+      mainnet: string,
+      testnet: string,
+      pollIntervalMs: number,
+      requestBlockSize: number
+    },
+    priceServiceConfiguration?: {
+      timeout?: number,
+      httpRetries?: number
+      /*
+      logger?: Logger;
+      verbose?: boolean;
+      */
+    }
+  }
   log: Options,
   algo: {
     token: string,
@@ -43,10 +59,10 @@ export interface IAppSettings extends Record<string, unknown> {
   wormhole: {
     spyServiceHost: string
   },
-  filters: {
-    'mainnet': Filter[]
-    'testnet': Filter[]
-  },
+  priceIds: {
+    testnet: string[],
+    mainnet: string[]
+  }
   network: 'testnet' | 'mainnet'
 }
 
@@ -60,6 +76,6 @@ export function getWormholeBridgeAppId (settings: IAppSettings) {
   return CONTRACTS[netUpper(settings)].algorand.token_bridge
 }
 
-export function getPythFilter (settings: IAppSettings) {
-  return settings.filters[settings.network]
+export function getPriceIds (settings: IAppSettings): string[] {
+  return settings.priceIds[settings.network]
 }
