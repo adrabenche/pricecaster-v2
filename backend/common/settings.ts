@@ -28,7 +28,8 @@ export interface IAppSettings extends Record<string, unknown> {
     priceService: {
       mainnet: string,
       testnet: string,
-      pollIntervalMs: number
+      pollIntervalMs: number,
+      requestBlockSize: number
     },
     priceServiceConfiguration?: {
       timeout?: number,
@@ -58,10 +59,10 @@ export interface IAppSettings extends Record<string, unknown> {
   wormhole: {
     spyServiceHost: string
   },
-  filters: {
-    'mainnet': Filter[]
-    'testnet': Filter[]
-  },
+  priceIds: {
+    testnet: string[],
+    mainnet: string[]
+  }
   network: 'testnet' | 'mainnet'
 }
 
@@ -75,6 +76,6 @@ export function getWormholeBridgeAppId (settings: IAppSettings) {
   return CONTRACTS[netUpper(settings)].algorand.token_bridge
 }
 
-export function getPythFilter (settings: IAppSettings) {
-  return settings.filters[settings.network]
+export function getPriceIds (settings: IAppSettings): string[] {
+  return settings.priceIds[settings.network]
 }

@@ -3,7 +3,8 @@ module.exports = {
     priceService: {
       mainnet: 'https://xc-mainnet.pyth.network',
       testnet: 'https://xc-testnet.pyth.network',
-      pollInterval: 1000
+      pollIntervalMs: 1000,
+      requestBlockSize: 32
     }
   },
   log: {
@@ -29,26 +30,13 @@ module.exports = {
     dumpFailedTx: true,
     dumpFailedTxDirectory: './dump'
   },
-  filters: {
+  priceIds: {
     mainnet: [
-      {
-        chain_id: 1,
-        emitter_address: '6bb14509a612f01fbbc4cffeebd4bbfb492a86df717ebe92eb6df432a3f00a25'
-      },
-      {
-        chain_id: 26,
-        emitter_address: 'f8cd23c2ab91237730770bbea08d61005cdda0984348f3f6eecb559638c0bba0'
-      }
     ],
     testnet: [
-      {
-        chain_id: 1,
-        emitter_address: 'f346195ac02f37d60d4db8ffa6ef74cb1be3550047543a4a9ee9acf4d78697b0'
-      },
-      {
-        chain_id: 26,
-        emitter_address: 'a27839d641b07743c0cb5f68c51f8cd31d2c0762bec00dc6fcd25433ef1ab5b6'
-      }
+      '0x08f781a893bc9340140c5f89c8a96f438bcfae4d1474cc0f688e3a52892c7318', // ALGO/USD
+      '0xca80ba6dc32e08d06f1aa886011eed1d77c77be9eb761cc10d72b7d0a2fd57a6', // ETH/USD
+      '0x41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722' // USDC/USD
     ]
   },
   apps: {
