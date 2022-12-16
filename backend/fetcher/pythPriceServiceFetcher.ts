@@ -26,11 +26,13 @@ import { PriceServiceConnection2 } from './priceServiceClient'
 import { DataReadyCallback } from '../common/basetypes'
 import _ from 'underscore'
 
+async function nullCallback (v: Buffer[]) {}
+
 export class PythPriceServiceFetcher {
   private priceServiceConnection: PriceServiceConnection2
   private active: boolean = false
   private allIds: HexString[] = []
-  private dataReadyCallback: DataReadyCallback = async (v: Buffer[]) => {}
+  private dataReadyCallback: DataReadyCallback = nullCallback
 
   constructor (readonly settings: IAppSettings) {
     this.priceServiceConnection = new PriceServiceConnection2(this.settings.pyth.priceService[this.settings.network],
@@ -86,6 +88,7 @@ export class PythPriceServiceFetcher {
   }
 
   shutdown (): void {
+    this.dataReadyCallback = nullCallback
     this.stop()
   }
 }

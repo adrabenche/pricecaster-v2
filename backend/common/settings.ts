@@ -53,6 +53,10 @@ export interface IAppSettings extends Record<string, unknown> {
     ownerKeyFile: string,
     asaIdMapperAppId: number,
   },
+  txMonitor: {
+    updateIntervalMs: number,
+    confirmationThreshold: number
+  }
   debug?: {
     skipPublish?: boolean,
   },

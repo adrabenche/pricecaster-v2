@@ -1,101 +1,106 @@
-import algosdk, { Account, Algodv2, assignGroupID, waitForConfirmation } from 'algosdk'
-import { IPublisher, PublishInfo } from './IPublisher'
-import { StatusCode } from '../common/statusCodes'
-import { PythData } from '../common/basetypes'
+/**
+ * Pricecaster Service.
+ *
+ * C3 Publisher class.
+ *
+ * Copyright 2022 Randlabs Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { parseVaa } from '@certusone/wormhole-sdk'
 import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/lib/cjs/algorand'
-import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
 import * as Logger from '@randlabs/js-logger'
+import algosdk, { Account, Algodv2, assignGroupID } from 'algosdk'
+import _ from 'underscore'
+import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
+import { TxMonitor } from '../engine/txMonitor'
+import { IPublisher } from './IPublisher'
 
 export class PricecasterPublisher implements IPublisher {
+  private active: boolean
   private algodClient: algosdk.Algodv2
   private pclib: PricecasterLib
   constructor (readonly wormholeCoreId: bigint,
     readonly priceCasterAppId: bigint,
-    readonly sender: algosdk.Account,
+    readonly senderAccount: algosdk.Account,
     readonly algodv2: Algodv2,
+    readonly txMonitor: TxMonitor,
     readonly dumpFailedTx: boolean = false,
     readonly dumpFailedTxDirectory: string = './') {
     this.algodClient = algodv2
-    this.pclib = new PricecasterLib(this.algodClient, sender.addr)
+    this.pclib = new PricecasterLib(this.algodClient, senderAccount.addr)
     this.pclib.enableDumpFailedTx(this.dumpFailedTx)
     this.pclib.setDumpFailedTxDirectory(this.dumpFailedTxDirectory)
 
     // HORRIBLE!!!! FIX ME:  Change Appid to bigints!
     this.pclib.setAppId(PRICECASTER_CI, parseInt(priceCasterAppId.toString()))
+    this.active = false
   }
 
-  async start () {
+  start () {
+    this.active = true
   }
 
   stop () {
+    this.active = false
     Logger.info('Stopping publisher.')
   }
 
-  signCallback (sender: string, tx: algosdk.Transaction) {
-    const txSigned = tx.signTxn(this.sender.sk)
-    return txSigned
-  }
-
-  async publish (data: PythData): Promise<PublishInfo> {
-    try {
-      const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(data.vaa), this.sender.addr, BigInt(this.priceCasterAppId))
-      const txs = submitVaaState.txs
-
-      const flatU8ArrayAssetIds = new Uint8Array(8 * data.attestations.length)
-      const intAssetIds: number[] = []
-      let offset = 0
-      let found = 0
-      data.attestations.forEach(att => {
-        if (att.asaId !== undefined) {
-          flatU8ArrayAssetIds.set(algosdk.encodeUint64(att.asaId), offset)
-          intAssetIds.push(att.asaId)
-          offset += 8
-          found++
-        }
-      })
-
-      if (found > 0) {
-        const storeTx = await this.pclib.makePriceStoreTx(this.sender.addr, flatU8ArrayAssetIds, intAssetIds, data.payload)
-        txs.push({ tx: storeTx, signer: null })
-        const ret = await signSendAndConfirmAlgorand(this.algodClient, txs, this.sender)
-
-        if (ret['pool-error'] === '') {
-          if (ret['confirmed-round']) {
-            Logger.info(` ✔ Confirmed at round ${ret['confirmed-round']}    Store TxID: ${storeTx.txID()}`)
-          } else {
-            Logger.info('⚠ No confirmation information')
-          }
-        } else {
-          Logger.error(`❌ Rejected: ${ret['pool-error']}`)
-        }
-      }
-
-      Logger.info(`     ${found} of ${data.attestations.length} attestation(s) published.`)
-      data.attestations.forEach((att) => {
-        if (att.symbol === undefined) {
-          Logger.info(`   ⚠️ ${att.productId}${att.priceId} unpublished (no symbol mapping) ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
-        } else if (att.asaId === undefined) {
-          Logger.info(`   ⚠️ ${att.symbol} unpublished (no ASA ID) ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
-        } else {
-          Logger.info(`     ${att.symbol} (Asset ${att.asaId})      ${att.price} ± ${att.conf} exp: ${att.expo}    price EMA:${att.ema_price} conf EMA: ${att.ema_conf}`)
-        }
-      })
-    } catch (e: any) {
-      Logger.error(`❌ Error submitting TX: ${e.toString()}`)
+  async publish (vaaList: Uint8Array[]) {
+    if (!this.active) {
+      return
     }
+    console.log(vaaList.length)
+    const t0 = _.now()
+    const txParams = await this.algodClient.getTransactionParams().do()
+    console.log(_.now() - t0)
+    let offset = 0
 
-    return {
-      status: StatusCode.OK
+    for await (const vaa of vaaList) {
+      const vaaParsed = parseVaa(vaa)
+      console.log(vaaParsed.payload.length)
+      const flatU8ArrayAssetIds = new Uint8Array(8 * 5)
+      const intAssetIds: number[] = []
+      flatU8ArrayAssetIds.set(algosdk.encodeUint64(0), offset)
+      intAssetIds.push(0)
+      offset += 8
+
+      try {
+        const txs: TransactionSignerPair[] = []
+        const signedGroupedTxns: Uint8Array[] = []
+        const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.priceCasterAppId))
+
+        txs.push(...submitVaaState.txs)
+        const tx = this.pclib.makePriceStoreTx(this.senderAccount.addr, flatU8ArrayAssetIds, intAssetIds, vaaParsed.payload, txParams)
+        txs.push({ tx, signer: null })
+
+        assignGroupID(txs.map((tx) => tx.tx))
+        const signedTxns = await sign(txs, this.senderAccount)
+
+        signedGroupedTxns.push(...signedTxns)
+        const txReq = await this.algodClient.sendRawTransaction(signedGroupedTxns).do()
+        this.txMonitor.addPendingTx(txReq.txId)
+      } catch (e: any) {
+        Logger.error(`Error generating submit-VAA or Price store TX for VAA: ${vaaParsed}, error ${e.toString()}`)
+      }
     }
   }
 }
-
-async function signSendAndConfirmAlgorand (
-  algodClient: Algodv2,
+async function sign (
   txs: TransactionSignerPair[],
   wallet: Account
 ) {
-  assignGroupID(txs.map((tx) => tx.tx))
   const signedTxns: Uint8Array[] = []
   for (const tx of txs) {
     if (tx.signer) {
@@ -104,11 +109,5 @@ async function signSendAndConfirmAlgorand (
       signedTxns.push(tx.tx.signTxn(wallet.sk))
     }
   }
-  await algodClient.sendRawTransaction(signedTxns).do()
-  const result = await waitForConfirmation(
-    algodClient,
-    txs[txs.length - 1].tx.txID(),
-    4
-  )
-  return result
+  return signedTxns
 }

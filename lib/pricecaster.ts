@@ -484,12 +484,17 @@ export default class PricecasterLib {
    * @param {*} assetIdsFlatArray The asset IDs contained in the attestations as a flat Uint8Array.
    * @param {*} assetIds Array of asset ID numbers contained in the attestations.
    * @param {*} payload The VAA payload
+   * @param {*} suggestedParams  The network suggested params, get with algosdk getTransactionParams call.
    */
-  async makePriceStoreTx (sender: string, assetIdsFlatArray: Uint8Array, assetIds: number[], payload: Buffer, fee: number = 3000): Promise<algosdk.Transaction> {
+  makePriceStoreTx (sender: string,
+    assetIdsFlatArray: Uint8Array,
+    assetIds: number[],
+    payload: Buffer,
+    suggestedParams: algosdk.SuggestedParams,
+    fee: number = 3000): algosdk.Transaction {
     const appArgs = []
-    const params = await this.algodClient.getTransactionParams().do()
-    params.fee = fee
-    params.flatFee = true
+    suggestedParams.fee = fee
+    suggestedParams.flatFee = true
 
     if (this.dumpFailedTx) {
       console.warn(`Dump failed to ${this.dumpFailedTxDirectory} unimplemented`)
@@ -498,7 +503,7 @@ export default class PricecasterLib {
     appArgs.push(new Uint8Array(Buffer.from('store')), assetIdsFlatArray, new Uint8Array(payload))
 
     const tx = algosdk.makeApplicationNoOpTxn(sender,
-      params,
+      suggestedParams,
       PRICECASTER_CI.appId,
       appArgs,
       undefined,

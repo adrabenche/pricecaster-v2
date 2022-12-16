@@ -21,23 +21,19 @@
 import { IEngine } from './IEngine'
 import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
-import { PricecasterPublisher } from '../publisher/C3Publisher'
+import { PricecasterPublisher as C3Publisher } from '../publisher/C3Publisher'
 import * as Logger from '@randlabs/js-logger'
-import { PythSymbolInfo } from './SymbolInfo'
-import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
 import { NullPublisher } from '../publisher/NullPublisher'
 import { Algodv2 } from 'algosdk'
-import { IPublisher } from 'backend/publisher/IPublisher'
-import { IPriceFetcher } from 'backend/fetcher/IPriceFetcher'
-import { VaaCache } from '../vaacache/vaacache'
-import { IVaaCache } from '../vaacache/IVaaCache'
+import { TxMonitor } from './txMonitor'
+import { IPublisher } from '../publisher/IPublisher'
 const fs = require('fs')
 const algosdk = require('algosdk')
 
 export class WormholeClientEngine implements IEngine {
   private fetcher!: PythPriceServiceFetcher
   private publisher!: IPublisher
-  private vaaCache!: IVaaCache
+  private txMonitor!: TxMonitor
   private settings: IAppSettings
   private shouldQuit: boolean
   constructor (settings: IAppSettings) {
@@ -49,7 +45,9 @@ export class WormholeClientEngine implements IEngine {
     if (!this.shouldQuit) {
       this.shouldQuit = true
       Logger.warn('Received SIGINT')
+      this.publisher.stop()
       this.fetcher.shutdown()
+      this.txMonitor.stop()
       await Logger.finalize()
     }
   }
@@ -59,6 +57,7 @@ export class WormholeClientEngine implements IEngine {
       await this.shutdown()
     })
 
+    const algodClient = new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port)
     let mnemo
     try {
       mnemo = fs.readFileSync(this.settings.apps.ownerKeyFile)
@@ -66,34 +65,30 @@ export class WormholeClientEngine implements IEngine {
       throw new Error('❌ Cannot read account key file: ' + e)
     }
 
-    const NetworkToCluster = (network: 'testnet' | 'mainnet') => { return network === 'mainnet' ? 'mainnet-beta' : 'testnet' }
-    Logger.info(`Gathering prices from Pyth network ${NetworkToCluster(this.settings.network)}...`)
-    const symbolInfo = new PythSymbolInfo(NetworkToCluster(this.settings.network))
-    await symbolInfo.load()
-    Logger.info(`Loaded ${symbolInfo.getSymbolCount()} product(s)`)
+    Logger.info(`Starting TxMonitor with confirmation threshold ${this.settings.txMonitor.confirmationThreshold}, interval ${this.settings.txMonitor.updateIntervalMs} msec`)
+    this.txMonitor = new TxMonitor(this.settings, algodClient)
+    this.txMonitor.start()
 
-    //const mapper = new Pyth2AsaMapper(this.settings.network)
-
-    this.vaaCache = new VaaCache()
-
-    // if (this.settings.debug?.skipPublish) {
-      // Logger.warn('Using Null Publisher')
+    if (this.settings.debug?.skipPublish) {
+      Logger.warn('Using Null Publisher')
       this.publisher = new NullPublisher()
-    // } else {
-      // this.publisher = new PricecasterPublisher(BigInt(getWormholeCoreAppId(this.settings)),
-        // this.settings.apps.pricecasterAppId,
-        // algosdk.mnemonicToSecretKey((mnemo.toString()).trim()),
-        // new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port),
-        // this.settings.algo.dumpFailedTx,
-        // this.settings.algo.dumpFailedTxDirectory
-      // )
-    // }
+    } else {
+      this.publisher = new C3Publisher(BigInt(getWormholeCoreAppId(this.settings)),
+        this.settings.apps.pricecasterAppId,
+        algosdk.mnemonicToSecretKey((mnemo.toString()).trim()),
+        algodClient,
+        this.txMonitor,
+        this.settings.algo.dumpFailedTx,
+        this.settings.algo.dumpFailedTxDirectory
+      )
+    }
     this.fetcher = new PythPriceServiceFetcher(this.settings)
 
     Logger.info('Waiting for publisher to boot...')
     this.publisher.start()
 
     Logger.info('Waiting for fetcher to boot...')
+    this.fetcher.setDataReadyCallback(this.publisher.publish.bind(this.publisher))
     this.fetcher.start()
 
     Logger.info('Ready.')
