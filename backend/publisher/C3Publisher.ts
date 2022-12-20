@@ -21,7 +21,7 @@
 import { parseVaa } from '@certusone/wormhole-sdk'
 import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/lib/cjs/algorand'
 import * as Logger from '@randlabs/js-logger'
-import algosdk, { Account, Algodv2, assignGroupID } from 'algosdk'
+import algosdk, { Account, Algodv2, assignGroupID, SuggestedParams } from 'algosdk'
 import _ from 'underscore'
 import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
 import { TxMonitor } from '../engine/txMonitor'
@@ -61,42 +61,59 @@ export class PricecasterPublisher implements IPublisher {
     if (!this.active) {
       return
     }
-    console.log(vaaList.length)
     const t0 = _.now()
     const txParams = await this.algodClient.getTransactionParams().do()
-    console.log(_.now() - t0)
-    let offset = 0
+    console.log(`time. getTransactionParams: ${_.now() - t0}`)
 
-    for await (const vaa of vaaList) {
-      const vaaParsed = parseVaa(vaa)
-      console.log(vaaParsed.payload.length)
-      const flatU8ArrayAssetIds = new Uint8Array(8 * 5)
-      const intAssetIds: number[] = []
-      flatU8ArrayAssetIds.set(algosdk.encodeUint64(0), offset)
-      intAssetIds.push(0)
-      offset += 8
+    const publishCalls: Promise<any>[] = []
+    for (const vaa of vaaList) {
+      publishCalls.push(this.submit(txParams, vaa))
+    }
 
-      try {
-        const txs: TransactionSignerPair[] = []
-        const signedGroupedTxns: Uint8Array[] = []
-        const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.priceCasterAppId))
+    const pricesPublish = await Promise.allSettled(publishCalls)
 
-        txs.push(...submitVaaState.txs)
-        const tx = this.pclib.makePriceStoreTx(this.senderAccount.addr, flatU8ArrayAssetIds, intAssetIds, vaaParsed.payload, txParams)
-        txs.push({ tx, signer: null })
-
-        assignGroupID(txs.map((tx) => tx.tx))
-        const signedTxns = await sign(txs, this.senderAccount)
-
-        signedGroupedTxns.push(...signedTxns)
-        const txReq = await this.algodClient.sendRawTransaction(signedGroupedTxns).do()
-        this.txMonitor.addPendingTx(txReq.txId)
-      } catch (e: any) {
-        Logger.error(`Error generating submit-VAA or Price store TX for VAA: ${vaaParsed}, error ${e.toString()}`)
+    pricesPublish.forEach((p) => {
+      if (p.status === 'fulfilled') {
+        console.log('fulfilled')
+        //this.txMonitor.addPendingTx(p.value)
       }
+    })
+  }
+
+  async submit (txParams: SuggestedParams, vaa: Uint8Array): Promise<any> {
+    console.log('submit')
+    let offset = 0
+    const vaaParsed = parseVaa(vaa)
+    console.log(vaaParsed.payload.length)
+    const flatU8ArrayAssetIds = new Uint8Array(8 * 5)
+    const intAssetIds: number[] = []
+    flatU8ArrayAssetIds.set(algosdk.encodeUint64(0), offset)
+    intAssetIds.push(0)
+    offset += 8
+
+    try {
+      const txs: TransactionSignerPair[] = []
+      const signedGroupedTxns: Uint8Array[] = []
+      const t0 = _.now()
+      const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.priceCasterAppId))
+      console.log(`time. submitVaaState: ${_.now() - t0}`)
+
+      txs.push(...submitVaaState.txs)
+      const tx = this.pclib.makePriceStoreTx(this.senderAccount.addr, flatU8ArrayAssetIds, intAssetIds, vaaParsed.payload, txParams)
+      txs.push({ tx, signer: null })
+
+      assignGroupID(txs.map((tx) => tx.tx))
+      const signedTxns = await sign(txs, this.senderAccount)
+
+      signedGroupedTxns.push(...signedTxns)
+      const txReq = this.algodClient.sendRawTransaction(signedGroupedTxns).do()
+      return txReq
+    } catch (e: any) {
+      Logger.error(`Error generating submit-VAA or Price store TX for VAA: ${vaaParsed}, error ${e.toString()}`)
     }
   }
 }
+
 async function sign (
   txs: TransactionSignerPair[],
   wallet: Account

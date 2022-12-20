@@ -47,7 +47,7 @@ module.exports = {
     ]
   },
   apps: {
-    pricecasterAppId: 123328237,
+    pricecasterAppId: 149451338,
     ownerKeyFile: './keys/owner.key'
   },
   wormhole: {
