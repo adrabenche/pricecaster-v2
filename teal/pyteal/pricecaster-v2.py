@@ -4,7 +4,7 @@
 
 The Pricecaster Onchain Program
 
-Version 6.5
+Version 7.0
 
 (c) 2022-23 Randlabs, inc.
 
@@ -20,6 +20,7 @@ v6.0 - Store Normalized price format (picodollars per asset microunit)
 v6.5 - Use OpPull for budget maximization.  
        Reject publications with Status != 1
        Modify normalization price handling.
+v7.0 - C3-Testnet deployment version: Use linear-addressable global space for entries.
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the Wormhole VAA verification transaction group.
@@ -32,22 +33,36 @@ The payload format must be V3, with batched message support.
 
 ------------------------------------------------------------------------------------------------
 
-Global state:
+ASA ID mappings are stored off-chain in the backend system, so it's the responsibility of the
+caller engine to mantain a canonical mapping between Pyth product-prices and ASA IDs.
 
-key             Algorand Standard Asset (ASA) ID
-value           packed fields as follow: 
+The global state is treated like a linear array (Blob) of entries with the following format:
+
+
+key             data
+value           Linear array packed with fields as follow: 
 
                 Bytes
+
+                8               asa_id
                 
+                8               normalized price
+
                 8               price
-                8               normalized_price
                 8               confidence
+
                 4               exponent
-                8               Price EMA value
-                8               Confidence EMA value
-                1               status
-                8               Timestamp
-                64              Origin productId + priceId key in Pyth network.
+
+                8               price EMA
+                8               confidence EMA
+
+                8               att time
+                8               publish time
+
+                8               prev_publish_time
+                8               prev_price
+                8               prev_confidence
+TOTAL           92 Bytes.
 
 ------------------------------------------------------------------------------------------------
 """
@@ -55,6 +70,7 @@ from inspect import currentframe
 from pyteal import *
 from globals import *
 from oppool import OpPool
+from globalblob import *
 import sys
 
 METHOD = Txn.application_args[0]
@@ -83,22 +99,36 @@ PYTH_FIELD_ATTESTATION_SIZE_OFFSET = Int(13)
 PYTH_FIELD_ATTESTATION_SIZE_LEN = Int(2)
 PYTH_BEGIN_PAYLOAD_OFFSET = Int(15)
 PRODUCT_PRICE_KEY_LEN = Int(64)
-PRICE_DATA_OFFSET = Int(64)
-PRICE_DATA_LEN = Int(37)
-PRICE_DATA_NORMALIZED_OFFSET = Int(72)
-PRICE_DATA_EXPONENT_OFFSET = Int(64) + Int(16)
-PRICE_DATA_STATUS_OFFSET = Int(100)
-PRICE_DATA_STATUS_LEN = Int(1)
-PRICE_DATA_TIMESTAMP_OFFSET = Int(109)
-PRICE_DATA_PREV_PRICE_OFFSET = Int(133)
-PRICE_DATA_TIMESTAMP_LEN = Int(8)
-PRICE_DATA_PREV_PRICE_LEN = Int(8)
+
+# Stored prices have two blocks: 
+# BLOCK 1 (price,conf,expo,ema_p,ema_c)
+# BLOCK 2 (att_time,pub_time,prev_pub_time,prev_price,prev_conf)
+#
+
+GLOBAL_ENTRY_SIZE = 92
+MAX_ENTRIES = int(63 * 127 / GLOBAL_ENTRY_SIZE)
+FREE_ENTRY = Bytes('base16', '0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
+
+BLOCK1_OFFSET = Int(64)
+BLOCK1_LEN = Int(36)
+BLOCK1_NORMALIZED_OFFSET = Int(72)
+BLOCK1_EXPONENT_OFFSET = Int(64) + Int(16)
+BLOCK1_STATUS_OFFSET = Int(100)
+BLOCK1_STATUS_LEN = Int(1)
+BLOCK2_OFFSET = Int(109)
+BLOCK2_PREV_PRICE_OFFSET = Int(133)
+BLOCK2_LEN = Int(8)
+BLOCK2_PREV_PRICE_LEN = Int(8)
 
 UINT64_SIZE = Int(8)
 UINT32_SIZE = Int(4)
 
 ALGO_DECIMALS = Int(6)
 PICO_DOLLARS_DECIMALS = Int(12)
+
+IGNORE_ATTESTATION = Int(0xFFFFFFFFFFFFFFFF)
+ENTRY_NOT_FOUND    = Int(0xFFFFFFFFFFFFFF00)
+GLOBAL_SPACE_FULL  = Int(0xFFFFFFFFFFFFFF01)
 
 def XAssert(cond):
     return Assert(And(cond, Int(currentframe().f_back.f_lineno)))
@@ -113,6 +143,7 @@ def is_creator():
 def bootstrap():
     return Seq([
         App.globalPut(Bytes("coreid"), Btoi(Txn.application_args[0])),
+        GlobalBlob.zero(),
         Approve()
     ])
 
@@ -151,29 +182,148 @@ def check_group_tx():
     ])
 
 
+@Subroutine(TealType.uint64)
+def find_asaid_index(asaId):
+    #
+    # Returns NOT_FOUND or entry-index
+    #
+    i = ScratchVar(TealType.uint64)
+    index = ScratchVar(TealType.uint64)
+
+    return Seq([
+        index.store(ENTRY_NOT_FOUND),
+        For(i.store(Int(0)),
+            i.load() < Int(MAX_ENTRIES), i.store(i.load() + Int(GLOBAL_ENTRY_SIZE))).Do(
+            Seq([
+                If(GlobalBlob.read(i.load(), i.load() + UINT64_SIZE) == asaId,
+                   Seq([
+                       index.store(i.load()),
+                       Break()
+                   ]))
+            ])),
+        Return(index.load())
+    ])
+
+@Subroutine(TealType.uint64)
+def find_free_entry_index():
+    #
+    # Returns NOT_FOUND or entry-index
+    #
+    i = ScratchVar(TealType.uint64)
+    index = ScratchVar(TealType.uint64)
+
+    return Seq([
+        index.store(GLOBAL_SPACE_FULL),
+        For(i.store(Int(0)),
+            i.load() < Int(MAX_ENTRIES), i.store(i.load() + Int(GLOBAL_ENTRY_SIZE))).Do(
+            Seq([
+                If(GlobalBlob.read(i.load(), i.load() + Int(GLOBAL_ENTRY_SIZE)) != FREE_ENTRY, 
+                    Seq([
+                        index.store(i.load()),
+                        Break()
+                    ]))
+            ])),
+        Return(index.load())
+    ])
+
+@Subroutine(TealType.none)
+def add_entry(data):
+    freeidx = ScratchVar(TealType.uint64)
+    return Seq([
+        freeidx.store(find_free_entry_index()),
+        XAssert(freeidx.load() != GLOBAL_SPACE_FULL),
+        update_entry(freeidx.load(), data)
+    ])
+
+
+@Subroutine(TealType.none)
+def update_entry(index, data):
+    return Seq([
+        XAssert(Len(data) == Int(GLOBAL_ENTRY_SIZE)),
+        GlobalBlob.write(index * Int(GLOBAL_ENTRY_SIZE), data)
+    ])
+
+
+@Subroutine(TealType.none)
+def publish_data(asa_id, attestation_data):
+    packed_price_data = ScratchVar(TealType.bytes)
+    asa_decimals = ScratchVar(TealType.uint64)
+    pyth_price = ScratchVar(TealType.uint64)
+    normalized_price = ScratchVar(TealType.uint64)
+    asa_id_index = ScratchVar(TealType.uint64)
+    ad = AssetParam.decimals(asa_id)
+    exponent = ScratchVar(TealType.uint64)
+    norm_exp = Int(0xffffffff) & (Int(0x100000000) - exponent.load())
+
+    return Seq([
+            # Normalize price as price * 10^(12 + exponent - asset_decimals) with  -12 <= exponent < 12,  0 <= d <= 19 
+        If (
+            asa_id == Int(0), 
+
+            # if Asset is 0 (ALGO), we cannot get decimals through AssetParams, so set to known value.
+            asa_decimals.store(ALGO_DECIMALS),
+            
+            # otherwise, get onchain decimals parameter. 
+            asa_decimals.store(Seq([ad, XAssert(ad.hasValue()), ad.value()]))
+            ),
+
+        pyth_price.store(Btoi(Extract(attestation_data, BLOCK1_OFFSET, UINT64_SIZE))),
+        exponent.store(Btoi(Extract(attestation_data, BLOCK1_EXPONENT_OFFSET, UINT32_SIZE))),
+
+        #                                                  
+        # Branch as follows, if exp < 0     p' = p * 10^12
+        #                                     -----------------
+        #                                       10^d * 10^ABS(e)
+        #
+        # otherwise,  p' = p * 10^12 * 10^e
+        #                  -----------------
+        #                        10^d
+        #
+        # where -12 <= e <= 12 ,  0 <= d <= 19
+        #
+
+        If (exponent.load() < Int(0x80000000),  # uint32, 2-compl positive 
+            normalized_price.store(WideRatio([pyth_price.load(), Exp(Int(10), PICO_DOLLARS_DECIMALS), Exp(Int(10), exponent.load())], 
+                                                [Exp(Int(10), asa_decimals.load())])),
+
+            normalized_price.store(WideRatio([pyth_price.load(), Exp(Int(10), PICO_DOLLARS_DECIMALS)], 
+                                                [Exp(Int(10), asa_decimals.load()), Exp(Int(10), norm_exp)]))
+        ),
+
+        # Concatenate all
+        packed_price_data.store(Concat(
+            Itob(asa_id),
+            Itob(normalized_price.load()),
+            Extract(attestation_data, BLOCK1_OFFSET, BLOCK1_LEN),   # price, confidence, exponent, price EMA, conf EMA
+            Extract(attestation_data, BLOCK2_OFFSET, BLOCK2_LEN),   # att_time,pub_time,prev_pub_time,prev_price,prev_conf
+        )),
+
+        # Lookup blob, store or update.
+
+        asa_id_index.store(find_asaid_index(asa_id)),
+        If(asa_id_index.load() == ENTRY_NOT_FOUND, 
+            add_entry(packed_price_data.load()), 
+            update_entry(asa_id_index.load(), packed_price_data.load()))
+    ])
+
+
 def store():
     # * Sender must be owner
     # * This must be part of a transaction group
     # * All calls in group must be issued from authorized Wormhole core.
-    # * Argument 0 must be array of ASA IDs corresponding to each of the attestations.
+    # * Argument 0 must be array of ASA IDs corresponding to each of the attestations that corresponds
+    #   to valid prices to update. If an entry is -1 (unsigned 0xFFFF FFFF FFFF FFFF), the corresponding attestation entry is ignored and 
+    #   not published, otherwise a lnear lookup is done and the price entry is updated. If there is no entry
+    #   with such ASA ID a new one is created.
     # * Argument 1 must be Pyth payload.
 
     pyth_payload = ScratchVar(TealType.bytes)
-    packed_price_data = ScratchVar(TealType.bytes)
     num_attestations = ScratchVar(TealType.uint64)
     attestation_size = ScratchVar(TealType.uint64)
     attestation_data = ScratchVar(TealType.bytes)
-    product_price_key = ScratchVar(TealType.bytes)
     asa_id = ScratchVar(TealType.uint64)
-    asa_decimals = ScratchVar(TealType.uint64)
-    pyth_price = ScratchVar(TealType.uint64)
-    normalized_price = ScratchVar(TealType.uint64)
-    exponent = ScratchVar(TealType.uint64)
 
     i = ScratchVar(TealType.uint64)
-    ad = AssetParam.decimals(asa_id.load())
-
-    norm_exp = Int(0xffffffff) & (Int(0x100000000) - exponent.load())
     op_pool = OpPool()
     return Seq([
 
@@ -181,6 +331,9 @@ def store():
         XAssert(Len(ASA_ID_ARRAY) % UINT64_SIZE == Int(0)),
 
         pyth_payload.store(PYTH_PAYLOAD),
+
+        # If testing mode is active, ignore group checks
+
         XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), Global.group_size() > Int(1))),
         XAssert(Txn.application_args.length() == Int(3)),
         XAssert(is_creator()),
@@ -220,58 +373,20 @@ def store():
         For(i.store(Int(0)), i.load() < num_attestations.load(), i.store(i.load() + Int(1))).Do(
             Seq([
                 attestation_data.store(Extract(pyth_payload.load(), PYTH_BEGIN_PAYLOAD_OFFSET + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
-                product_price_key.store(Extract(attestation_data.load(), Int(0), PRODUCT_PRICE_KEY_LEN)),
+                 #product_price_key.store(Extract(attestation_data.load(), Int(0), PRODUCT_PRICE_KEY_LEN)),
                 asa_id.store(Btoi(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE))),
+
+                # Ignore this attestation of no ASA ID available.
+                If(asa_id.load() == IGNORE_ATTESTATION, Continue()),
 
                 # Ensure status == 1
 
-                If(Extract(attestation_data.load(), PRICE_DATA_STATUS_OFFSET, PRICE_DATA_STATUS_LEN) != Bytes("base16", "0x01"),
+                If(Extract(attestation_data.load(), BLOCK1_STATUS_OFFSET, BLOCK1_STATUS_LEN) != Bytes("base16", "0x01"),
                     Log(Concat(Bytes("PC_IGNORED_PRICE_INVALID_STATUS "), Itob(asa_id.load()))),
 
                     # Valid status,  continue publication....
                     Seq([
-                            # Normalize price as price * 10^(12 + exponent - asset_decimals) with  -12 <= exponent < 12,  0 <= d <= 19 
-                        If (
-                            asa_id.load() == Int(0), 
-
-                            # if Asset is 0 (ALGO), we cannot get decimals through AssetParams, so set to known value.
-                            asa_decimals.store(ALGO_DECIMALS),
-                            
-                            # otherwise, get onchain decimals parameter. 
-                            asa_decimals.store(Seq([ad, XAssert(ad.hasValue()), ad.value()]))
-                            ),
-
-                        pyth_price.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_OFFSET, UINT64_SIZE))),
-                        exponent.store(Btoi(Extract(attestation_data.load(), PRICE_DATA_EXPONENT_OFFSET, UINT32_SIZE))),
-
-                        #                                                  
-                        # Branch as follows, if exp < 0     p' = p * 10^12
-                        #                                     -----------------
-                        #                                       10^d * 10^ABS(e)
-                        #
-                        # otherwise,  p' = p * 10^12 * 10^e
-                        #                  -----------------
-                        #                        10^d
-                        #
-                        # where -12 <= e <= 12 ,  0 <= d <= 19
-                        #
-
-                        If (exponent.load() < Int(0x80000000),  # uint32, 2-compl positive 
-                            normalized_price.store(WideRatio([pyth_price.load(), Exp(Int(10), PICO_DOLLARS_DECIMALS), Exp(Int(10), exponent.load())], 
-                                                             [Exp(Int(10), asa_decimals.load())])),
-
-                            normalized_price.store(WideRatio([pyth_price.load(), Exp(Int(10), PICO_DOLLARS_DECIMALS)], 
-                                                             [Exp(Int(10), asa_decimals.load()), Exp(Int(10), norm_exp)]))
-                        ),
-
-                        # Concatenate all
-                        packed_price_data.store(Concat(
-                            Itob(pyth_price.load()),
-                            Itob(normalized_price.load()),
-                            Extract(attestation_data.load(), PRICE_DATA_OFFSET + UINT64_SIZE, PRICE_DATA_LEN - UINT64_SIZE),   # confidence, exponent, price EMA, conf EMA, status, # publishers
-                            Extract(attestation_data.load(), PRICE_DATA_TIMESTAMP_OFFSET, PRICE_DATA_TIMESTAMP_LEN),   # timestamp
-                        )),
-                        App.globalPut(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE), Concat(packed_price_data.load(), product_price_key.load())),
+                        publish_data(asa_id.load(), attestation_data.load())
                     ])
                 )
             ])
@@ -315,7 +430,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         clear_state_outfile = sys.argv[2]
 
-    print("Pricecaster V2 TEAL Program     Version 6.5, (c) 2022-23 Randlabs, inc.")
+    print("Pricecaster V2 TEAL Program     Version 7.0, (c) 2022-23 Randlabs, inc.")
     print("Compiling approval program...")
 
     with open(approval_outfile, "w") as f:
