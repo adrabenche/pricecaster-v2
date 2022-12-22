@@ -4,7 +4,7 @@ module.exports = {
       mainnet: 'https://xc-mainnet.pyth.network',
       testnet: 'https://xc-testnet.pyth.network',
       pollIntervalMs: 1000,
-      requestBlockSize: 32
+      requestBlockSize: 10
     }
   },
   log: {
@@ -43,7 +43,8 @@ module.exports = {
       '0x41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722', // USDC/USD
       '0xd7566a3ba7f7286ed54f4ae7e983f4420ae0b1e0f3892e11f9c4ab107bbad7b9', // AVAX/USD
       '0xd2c2c1f2bba8e0964f9589e060c2ee97f5e19057267ac3284caef3bd50bd2cb5', // MATIC/USD
-      '0xecf553770d9b10965f8fb64771e93f5690a182edc32be4a3236e0caaa6e0581a' // BNB/USD
+      '0xecf553770d9b10965f8fb64771e93f5690a182edc32be4a3236e0caaa6e0581a' // BNB/USD,
+
     ]
   },
   apps: {
