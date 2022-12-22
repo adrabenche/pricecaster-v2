@@ -21,13 +21,7 @@
 import { Algodv2 } from 'algosdk'
 import { IAppSettings } from '../common/settings'
 import * as Logger from '@randlabs/js-logger'
-
-export type TxStats = {
-  total: number,
-  pending: number,
-  error: number,
-  success: number
-}
+import { Statistics } from './Stats'
 
 export type UpdateResult = {
   confirmed: string[],
@@ -37,20 +31,15 @@ export type UpdateResult = {
 export class TxMonitor {
   // do with persistence (SQLite?)
   private pendingTxs: Set<string> = new Set()
-  private stats: TxStats
   private timerId: any
 
-  constructor (readonly settings: IAppSettings, readonly algodClient: Algodv2) {
-    this.stats = { total: 0, pending: 0, error: 0, success: 0 }
-  }
+  // eslint-disable-next-line no-useless-constructor
+  constructor (readonly settings: IAppSettings, readonly algodClient: Algodv2, readonly stats: Statistics) {}
 
   start () {
     this.timerId = setInterval(async () => {
       const updateResult = await this.update()
-      Logger.debug(1, `TxMonitor update: Confirmed TXs [${updateResult.confirmed}]`)
-      if (updateResult.failed.length > 0) {
-        Logger.debug(1, `TxMonitor update: Failed TXs [${updateResult.confirmed}]`)
-      }
+      Logger.debug(1, `TxMonitor update: Total [${this.stats.total}], pending [${this.stats.pending}], confirmed [${this.stats.success}], failed [${this.stats.error}]`)
     }, this.settings.txMonitor.updateIntervalMs)
   }
 
@@ -60,7 +49,7 @@ export class TxMonitor {
 
   addPendingTx (txId: string) {
     this.pendingTxs.add(txId)
-    this.stats.pending++
+    this.stats.txStats.pending++
   }
 
   async update (): Promise<UpdateResult> {
@@ -83,9 +72,9 @@ export class TxMonitor {
 
     confirmed.forEach((txid) => this.pendingTxs.delete(txid))
     failed.forEach((txid) => this.pendingTxs.delete(txid))
-    this.stats.success += confirmed.length
-    this.stats.error += failed.length
-    this.stats.pending -= confirmed.length + failed.length
+    this.stats.txStats.success += confirmed.length
+    this.stats.txStats.error += failed.length
+    this.stats.txStats.pending -= confirmed.length + failed.length
 
     return { confirmed, failed }
   }
