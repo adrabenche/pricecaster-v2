@@ -64,6 +64,8 @@ value           Linear array packed with fields as follow:
                 8               prev_confidence
 TOTAL           92 Bytes.
 
+First byte of storage is reserved to keep number of entries.
+
 ------------------------------------------------------------------------------------------------
 """
 from inspect import currentframe
@@ -116,9 +118,7 @@ BLOCK1_EXPONENT_OFFSET = Int(64) + Int(16)
 BLOCK1_STATUS_OFFSET = Int(100)
 BLOCK1_STATUS_LEN = Int(1)
 BLOCK2_OFFSET = Int(109)
-BLOCK2_PREV_PRICE_OFFSET = Int(133)
-BLOCK2_LEN = Int(8)
-BLOCK2_PREV_PRICE_LEN = Int(8)
+BLOCK2_LEN = Int(40)
 
 UINT64_SIZE = Int(8)
 UINT32_SIZE = Int(4)
@@ -141,7 +141,9 @@ def is_creator():
 @Subroutine(TealType.uint64)
 # Arg0: Bootstrap with the authorized VAA Processor appid.
 def bootstrap():
+    op_pool = OpPool()
     return Seq([
+        op_pool.maximize_budget(Int(1000)),
         App.globalPut(Bytes("coreid"), Btoi(Txn.application_args[0])),
         GlobalBlob.zero(),
         Approve()
@@ -189,13 +191,16 @@ def find_asaid_index(asaId):
     #
     i = ScratchVar(TealType.uint64)
     index = ScratchVar(TealType.uint64)
+    offset = ScratchVar(TealType.uint64)
 
     return Seq([
         index.store(ENTRY_NOT_FOUND),
-        For(i.store(Int(0)),
-            i.load() < Int(MAX_ENTRIES), i.store(i.load() + Int(GLOBAL_ENTRY_SIZE))).Do(
+        offset.store(Int(0)),
+        For(i.store(Int(1)),
+            i.load() < get_entry_count(), i.store(i.load() + Int(1))).Do(
             Seq([
-                If(GlobalBlob.read(i.load(), i.load() + UINT64_SIZE) == asaId,
+                offset.store(i.load() * Int(GLOBAL_ENTRY_SIZE)),
+                If(Btoi(GlobalBlob.read(offset.load(), offset.load() + UINT64_SIZE)) == asaId,
                    Seq([
                        index.store(i.load()),
                        Break()
@@ -205,34 +210,26 @@ def find_asaid_index(asaId):
     ])
 
 @Subroutine(TealType.uint64)
-def find_free_entry_index():
-    #
-    # Returns NOT_FOUND or entry-index
-    #
-    i = ScratchVar(TealType.uint64)
-    index = ScratchVar(TealType.uint64)
+def get_entry_count():
+    return Btoi(GlobalBlob.read(Int(0), Int(1)))
 
+@Subroutine(TealType.none)
+def inc_entry_count():
+    entrycount = ScratchVar(TealType.uint64)
     return Seq([
-        index.store(GLOBAL_SPACE_FULL),
-        For(i.store(Int(0)),
-            i.load() < Int(MAX_ENTRIES), i.store(i.load() + Int(GLOBAL_ENTRY_SIZE))).Do(
-            Seq([
-                If(GlobalBlob.read(i.load(), i.load() + Int(GLOBAL_ENTRY_SIZE)) != FREE_ENTRY, 
-                    Seq([
-                        index.store(i.load()),
-                        Break()
-                    ]))
-            ])),
-        Return(index.load())
+        entrycount.store(get_entry_count() + Int(1)),
+        GlobalBlob.write(Int(0), Substring(Itob(entrycount.load()), Int(0), Int(1)))
     ])
+
 
 @Subroutine(TealType.none)
 def add_entry(data):
-    freeidx = ScratchVar(TealType.uint64)
+    entrycount = ScratchVar(TealType.uint64)
     return Seq([
-        freeidx.store(find_free_entry_index()),
-        XAssert(freeidx.load() != GLOBAL_SPACE_FULL),
-        update_entry(freeidx.load(), data)
+        entrycount.store(get_entry_count()),
+        XAssert(entrycount.load() < Int(MAX_ENTRIES)),
+        update_entry(entrycount.load() + Int(1), data),
+        inc_entry_count(),
     ])
 
 
@@ -240,7 +237,7 @@ def add_entry(data):
 def update_entry(index, data):
     return Seq([
         XAssert(Len(data) == Int(GLOBAL_ENTRY_SIZE)),
-        GlobalBlob.write(index * Int(GLOBAL_ENTRY_SIZE), data)
+        GlobalBlob.write(Int(1) + (index * Int(GLOBAL_ENTRY_SIZE)), data)
     ])
 
 
@@ -373,7 +370,6 @@ def store():
         For(i.store(Int(0)), i.load() < num_attestations.load(), i.store(i.load() + Int(1))).Do(
             Seq([
                 attestation_data.store(Extract(pyth_payload.load(), PYTH_BEGIN_PAYLOAD_OFFSET + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
-                 #product_price_key.store(Extract(attestation_data.load(), Int(0), PRODUCT_PRICE_KEY_LEN)),
                 asa_id.store(Btoi(Extract(ASA_ID_ARRAY, i.load() * UINT64_SIZE, UINT64_SIZE))),
 
                 # Ignore this attestation of no ASA ID available.
@@ -386,7 +382,8 @@ def store():
 
                     # Valid status,  continue publication....
                     Seq([
-                        publish_data(asa_id.load(), attestation_data.load())
+                        # op_pool.maximize_budget(Int(2000)),
+                        # publish_data(asa_id.load(), attestation_data.load())
                     ])
                 )
             ])
@@ -433,9 +430,11 @@ if __name__ == "__main__":
     print("Pricecaster V2 TEAL Program     Version 7.0, (c) 2022-23 Randlabs, inc.")
     print("Compiling approval program...")
 
+    optimize_options = OptimizeOptions(scratch_slots=True)
+
     with open(approval_outfile, "w") as f:
         compiled = compileTeal(pricecaster_program(),
-                               mode=Mode.Application, version=6)
+                               mode=Mode.Application, version=7, optimize=optimize_options)
         f.write(compiled)
 
     print("Written to " + approval_outfile)
@@ -443,7 +442,7 @@ if __name__ == "__main__":
 
     with open(clear_state_outfile, "w") as f:
         compiled = compileTeal(clear_state_program(),
-                               mode=Mode.Application, version=6)
+                               mode=Mode.Application, version=7)
         f.write(compiled)
 
     print("Written to " + clear_state_outfile)
