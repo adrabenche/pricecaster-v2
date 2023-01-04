@@ -37,8 +37,6 @@ export type VAA = {
   payload: Buffer
 }
 export type PythAttestation = {
-  asaId: number,
-  symbol: string,
   productId: Buffer,
   priceId: Buffer,
   price: BigInt,

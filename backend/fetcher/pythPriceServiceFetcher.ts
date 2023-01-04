@@ -20,11 +20,12 @@
  */
 
 import * as Logger from '@randlabs/js-logger'
-import { getPriceIds, IAppSettings } from '../common/settings'
+import { IAppSettings } from '../common/settings'
 import { HexString } from '@pythnetwork/pyth-common-js'
 import { PriceServiceConnection2 } from './priceServiceClient'
 import { DataReadyCallback } from '../common/basetypes'
 import _ from 'underscore'
+import { SlotInfo, slotLayout } from '../../settings/slot-config'
 
 async function nullCallback (v: Buffer[]) {}
 
@@ -33,10 +34,13 @@ export class PythPriceServiceFetcher {
   private active: boolean = false
   private allIds: HexString[] = []
   private dataReadyCallback: DataReadyCallback = nullCallback
+  private priceIds: string[] = []
 
   constructor (readonly settings: IAppSettings) {
     this.priceServiceConnection = new PriceServiceConnection2(this.settings.pyth.priceService[this.settings.network],
       this.settings.pyth.priceServiceConfiguration)
+
+    this.priceIds = slotLayout[this.settings.network].map( (v: SlotInfo) => v.priceId)
   }
 
   async setDataReadyCallback (drcb: DataReadyCallback) {
@@ -54,11 +58,11 @@ export class PythPriceServiceFetcher {
 
     const t0 = _.now()
 
-    const priceIdBlocks = _.chunk(getPriceIds(this.settings), this.settings.pyth.priceService.requestBlockSize)
+    const priceIdBlocks = _.chunk(this.priceIds, this.settings.pyth.priceService.requestBlockSize)
     const vaaList = []
     for await (const block of priceIdBlocks) {
       try {
-        Logger.debug(1, 'Calling request block...')
+        Logger.debug(1, `Calling request block for ${block.length} prices...`)
         const vaas = await this.priceServiceConnection.getLatestVaasForIds(block)
         vaaList.push(vaas)
       } catch (e: any) {

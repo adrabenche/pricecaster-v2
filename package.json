@@ -24,7 +24,7 @@
     "@randlabs/js-logger": "^1.2.0",
     "algosdk": "^1.19.1",
     "base58-universal": "^1.0.0",
-    "charm": "^1.0.2",
+    "better-sqlite3": "^8.0.1",
     "elliptic": "^6.5.4",
     "esm": "^3.2.25",
     "ethers": "^5.5.1",

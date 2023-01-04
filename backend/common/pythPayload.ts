@@ -12,18 +12,7 @@ export function getAttestations (numAttest: number, payload: Buffer, sizeAttest:
     const productId = tools.extract3(attestation, 0, 32)
     const priceId = tools.extract3(attestation, 32, 32)
 
-    /// / console.log(base58.encode(productId))
-    /// / console.log(base58.encode(priceId))
-    // let asaId
-    // if (symbol) {
-    // asaId = this.mapper.lookupAsa(symbol)
-    // } else {
-    // Logger.warn(`No symbol found for productId: ${productId} priceId: ${priceId}`)
-    // }
-
     const pythAttest: PythAttestation = {
-      asaId: 0,
-      symbol: '',
       productId,
       priceId,
       price: attestation.readBigUInt64BE(64),
@@ -44,4 +33,17 @@ export function getAttestations (numAttest: number, payload: Buffer, sizeAttest:
     attestations.push(pythAttest)
   }
   return attestations
+}
+
+export function getPriceIdsInVaa (vaaPayload: Buffer): string[] {
+  const priceIds: string[] = []
+  const numAttest = vaaPayload.readInt16BE(11)
+  const sizeAttest = vaaPayload.readInt16BE(13)
+
+  for (let i = 0; i < numAttest; ++i) {
+    const attestation = tools.extract3(vaaPayload, 15 + (i * sizeAttest), sizeAttest)
+    const priceId = tools.extract3(attestation, 32, 32)
+    priceIds.push(priceId.toString('hex'))
+  }
+  return priceIds
 }

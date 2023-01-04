@@ -507,9 +507,11 @@ export default class PricecasterLib {
     const assetIds: number[] = asaIdSlots.filter(v => v.asaid !== -1).map(v => v.asaid)
     const encodedAsaIdSlots = new Uint8Array(ASAID_SLOT_SIZE * asaIdSlots.length)
 
+    const IGNORE_ASA = Buffer.from('FFFFFFFFFFFFFFFF', 'hex')
+
     for (let i = 0; i < asaIdSlots.length; ++i) {
       const buf = Buffer.concat([
-        algosdk.encodeUint64(asaIdSlots[i].asaid),
+        (asaIdSlots[i].asaid !== -1) ? algosdk.encodeUint64(asaIdSlots[i].asaid) : IGNORE_ASA,
         algosdk.encodeUint64(asaIdSlots[i].slot).slice(7)
       ])
       encodedAsaIdSlots.set(buf, i * ASAID_SLOT_SIZE)

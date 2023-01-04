@@ -39,7 +39,7 @@ export class TxMonitor {
   start () {
     this.timerId = setInterval(async () => {
       const updateResult = await this.update()
-      Logger.debug(1, `TxMonitor update: Total [${this.stats.total}], pending [${this.stats.pending}], confirmed [${this.stats.success}], failed [${this.stats.error}]`)
+      Logger.debug(1, `TxMonitor update: Total [${this.stats.txStats.total}], pending [${this.stats.txStats.pending}], confirmed [${this.stats.txStats.success}], failed [${this.stats.txStats.error}]`)
     }, this.settings.txMonitor.updateIntervalMs)
   }
 
