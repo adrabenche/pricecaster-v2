@@ -85,6 +85,8 @@ export const MAPPER_CI: ContractInfo = {
   appId: 0
 }
 
+export type AsaIdSlot = { asaid: number, slot: number }
+
 // --------------------------------------------------------------------------------------
 type SignCallback = (arg0: string, arg1: algosdk.Transaction) => any
 
@@ -234,8 +236,8 @@ export default class PricecasterLib {
      * @return {String/Number} it returns the value associated to the key that could be an address,
      * a number or a base64 string containing a ByteArray
      */
-  async readGlobalStateByKey (key: string, pcci: ContractInfo): Promise<any> {
-    return tools.readAppGlobalStateByKey(this.algodClient, pcci.appId, this.ownerAddr, key)
+  async readGlobalStateByKey (key: string, pcci: ContractInfo, disableParseAddress?: boolean): Promise<any> {
+    return tools.readAppGlobalStateByKey(this.algodClient, pcci.appId, this.ownerAddr, key, disableParseAddress)
   }
 
   /**
@@ -299,12 +301,13 @@ export default class PricecasterLib {
     appArgs: Uint8Array[],
     signCallback: SignCallback,
     tmplReplace: [string, string][] = [],
-    skipCompile?: any): Promise<string> {
+    skipCompile?: any,
+    fee?: number): Promise<string> {
     const onComplete = algosdk.OnApplicationComplete.NoOpOC
 
     // get node suggested parameters
     const params = await this.algodClient.getTransactionParams().do()
-    params.fee = this.minFee
+    params.fee = fee ?? this.minFee
     params.flatFee = true
 
     if (!skipCompile) {
@@ -335,12 +338,13 @@ export default class PricecasterLib {
   /**
        * Create the Pricekeeper application based on the default approval and clearState programs or based on the specified files.
        * @param  {String} sender account used to sign the createApp transaction
-       * @param  {String} wormholeCoreAppId The application id of the Wormhole Core program associated.
+       * @param  {String} wormholeCore The application id of the Wormhole Core program associated.
+       * @param  {boolean} testMode Set to true to enable test mode (ignore transaction format check)
        * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
        * @return {String} transaction id of the created application
        */
-  async createPricecasterApp (sender: string, wormholeCore: number, testMode: boolean, signCallback: SignCallback): Promise<any> {
-    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback, [['TMPL_I_TESTING', testMode ? '1' : '0']])
+  async createPricecasterApp (sender: string, wormholeCore: number, testMode: boolean, signCallback: SignCallback, fee?: number): Promise<any> {
+    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback, [['TMPL_I_TESTING', testMode ? '1' : '0']], undefined, fee)
   }
 
   /**
@@ -476,31 +480,42 @@ export default class PricecasterLib {
     return this.algodClient.pendingTransactionInformation(txId).do()
   }
 
+
   /**
    * Pricecaster.-V2: Generate store price transaction.
    *
    * Other transaction in group must provide for 2000 uALGO fee for maximizing computation budget.
    * @param {*} sender The sender account (typically the VAA verification stateless program)
-   * @param {*} assetIdsFlatArray The asset IDs contained in the attestations as a flat Uint8Array.
-   * @param {*} assetIds Array of asset ID numbers contained in the attestations.
+   * @param {*} asaIdSlots An array of objects of entries  (asaid, slot) for each attestation contained in the VAA to publish. A VAA
+   *                           may contain entries that we dont want to publish, in that case the asaid member must be set to -1  (0xffff ...)
+   *                           The slot will be used to store the price and must be mantained by caller.
    * @param {*} payload The VAA payload
    * @param {*} suggestedParams  The network suggested params, get with algosdk getTransactionParams call.
    */
-  makePriceStoreTx (sender: string,
-    assetIdsFlatArray: Uint8Array,
-    assetIds: number[],
-    payload: Buffer,
-    suggestedParams: algosdk.SuggestedParams,
-    fee: number = 3000): algosdk.Transaction {
+  makePriceStoreTx (sender: string, asaIdSlots: AsaIdSlot[], payload: Buffer, suggestedParams: algosdk.SuggestedParams): algosdk.Transaction {
+    const ASAID_SLOT_SIZE = 9
     const appArgs = []
-    suggestedParams.fee = fee
     suggestedParams.flatFee = true
 
     if (this.dumpFailedTx) {
       console.warn(`Dump failed to ${this.dumpFailedTxDirectory} unimplemented`)
     }
 
-    appArgs.push(new Uint8Array(Buffer.from('store')), assetIdsFlatArray, new Uint8Array(payload))
+    // Pricecaster use the ASA IDs to query for decimals data onchain, so valid ASA IDs
+    // must be added to the foreign asset array
+
+    const assetIds: number[] = asaIdSlots.filter(v => v.asaid !== -1).map(v => v.asaid)
+    const encodedAsaIdSlots = new Uint8Array(ASAID_SLOT_SIZE * asaIdSlots.length)
+
+    for (let i = 0; i < asaIdSlots.length; ++i) {
+      const buf = Buffer.concat([
+        algosdk.encodeUint64(asaIdSlots[i].asaid),
+        algosdk.encodeUint64(asaIdSlots[i].slot).slice(7)
+      ])
+      encodedAsaIdSlots.set(buf, i * ASAID_SLOT_SIZE)
+    }
+
+    appArgs.push(new Uint8Array(Buffer.from('store')), encodedAsaIdSlots, new Uint8Array(payload))
 
     const tx = algosdk.makeApplicationNoOpTxn(sender,
       suggestedParams,
