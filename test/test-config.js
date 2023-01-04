@@ -19,14 +19,14 @@ module.exports = {
   ALGORAND_NODE_HOST: 'http://localhost',
   ALGORAND_NODE_PORT: '4001',
   //
-  // Funding source for accounts.
+  // Funding source for accounts. This must be used with Tilt dev accounts.
   //
-  SOURCE_ACCOUNT: 'XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM',
-  SOURCE_MNEMO: 'path avocado minor cattle leader thank burger clown cushion village write myself giant antenna betray can diagram pull use exercise truly flash inquiry abandon puppy',
+  SOURCE_ACCOUNT: 'DEV7AREMQSPWWDDFFJ3A5OIMMDCZN4YT5U2MQBN76Y4J5ERQQ3MWPIHUYA',
+  SOURCE_MNEMO: 'provide warfare better filter glory civil help jacket alpha penalty van fiber code upgrade web more curve sauce merit bike satoshi blame orphan absorb modify',
   //
-  // Owner account.
+  // Owner account. Tilt-account.
   //
-  OWNER_MNEMO: 'assault approve result rare float sugar power float soul kind galaxy edit unusual pretty tone tilt net range pelican avoid unhappy amused recycle abstract master',
+  OWNER_MNEMO: 'album neglect very nasty input trick annual arctic spray task candy unfold letter drill glove sword flock omit dial rather session mesh slow abandon slab',
   //
   // Set to true to dump failed TX
   //
