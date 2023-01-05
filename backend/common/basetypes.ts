@@ -58,3 +58,9 @@ export type PythData = {
   payload: Buffer,
   attestations: PythAttestation[]
 }
+
+export type SlotInfo = {
+    index: number,
+    priceId: string,
+    asaId: number
+ }

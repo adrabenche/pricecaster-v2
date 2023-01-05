@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-expressions */
-import PricecasterLib, { PRICECASTER_CI } from '../lib/pricecaster'
+import PricecasterLib, { PRICECASTER_CI, PriceSlotData } from '../lib/pricecaster'
 import tools from '../tools/app-tools'
 import algosdk, { Account, generateAccount, makePaymentTxnWithSuggestedParams, Transaction } from 'algosdk'
 const { expect } = require('chai')
@@ -8,29 +8,12 @@ const spawnSync = require('child_process').spawnSync
 const testConfig = require('./test-config')
 chai.use(require('chai-as-promised'))
 
-const GLOBAL_SLOT_SIZE = 92
-
 // ===============================================================================================================
 
 let pclib: PricecasterLib
 let algodClient: algosdk.Algodv2
 let ownerAccount: algosdk.Account
 type AssetMapEntry = { decimals: number, assetId: number | undefined, samplePrice: number, exponent: number }
-
-type StoredPriceData = {
-  asaId: number,
-  normalizedPrice: bigint,
-  pythPrice: bigint,
-  confidence: bigint,
-  exponent: number,
-  priceEMA: bigint,
-  confEMA: bigint,
-  attTime: bigint,
-  pubTime: bigint,
-  prevPubTime: bigint,
-  prevPrice: bigint,
-  prevConf: bigint
-}
 
 // ===============================================================================================================
 
@@ -179,7 +162,7 @@ async function deleteAllAssets () {
 async function testOkCase (decimals: number,
   samplePrice: number,
   exponent: number,
-  assetIdOverride?: number): Promise<StoredPriceData> {
+  assetIdOverride?: number): Promise<PriceSlotData> {
   const assetMap = [
     { decimals, assetId: assetIdOverride, samplePrice, exponent }
   ]
@@ -197,7 +180,7 @@ async function testOkCase (decimals: number,
   const txResponse = await pclib.waitForTransactionResponse(txId)
   expect(txResponse['pool-error']).to.equal('')
 
-  const dataBuf = await getGlobalPriceSlot(0)
+  const dataBuf = await pclib.readSlot(0)
   const asaId = dataBuf.subarray(0, 8).readBigInt64BE()
   const normalizedPrice = dataBuf.subarray(8, 16).readBigUint64BE()
   const pythPrice = dataBuf.subarray(16, 24).readBigUint64BE()
@@ -266,19 +249,6 @@ async function testFailCase (decimals: number,
   if (!assetIdOverride) {
     deleteAssets(assetMap)
   }
-}
-
-async function fetchGlobalStore (): Promise<Buffer> {
-  let buf: Buffer = Buffer.alloc(0)
-  for await (const i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) {
-    const val = Buffer.from(await pclib.readGlobalStateByKey(String.fromCharCode(i), PRICECASTER_CI, true), 'base64')
-    buf = Buffer.concat([buf, val])
-  }
-  return buf
-}
-
-async function getGlobalPriceSlot (slot: number): Promise<Buffer> {
-  return (await fetchGlobalStore()).subarray(GLOBAL_SLOT_SIZE * slot, GLOBAL_SLOT_SIZE * slot + GLOBAL_SLOT_SIZE)
 }
 
 // ===============================================================================================================
@@ -354,7 +324,7 @@ describe('Pricecaster App Tests', function () {
     expect(txResponse['pool-error']).to.equal('')
 
     for (const [i, v] of assetMap.entries()) {
-      const priceData = await getGlobalPriceSlot(i)
+      const priceData = await pclib.readSlot(i)
       expect(priceData.readBigInt64BE(0)).to.deep.equal(BigInt(v.assetId!))
     }
     await deleteAssets(assetMap)
@@ -385,7 +355,7 @@ describe('Pricecaster App Tests', function () {
     expect(txResponse['pool-error']).to.equal('')
 
     for (const [i, v] of assetMap.entries()) {
-      const priceData = await getGlobalPriceSlot(i)
+      const priceData = await pclib.readSlot(i)
       expect(priceData.readBigInt64BE(0)).to.deep.equal(BigInt(v.assetId!))
     }
     await deleteAssets(assetMap)

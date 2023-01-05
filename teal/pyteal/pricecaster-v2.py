@@ -66,6 +66,17 @@ TOTAL           92 Bytes.
 
 First byte of storage is reserved to keep number of entries.
 
+* The coreid entry in the global state points to the deployed Wormhole core.
+
+With this in mind, there is space for 127 * 63 bytes of space = 8001 bytes. 
+As the last slot space is reserved for internal use and future expansion (SYSTEM_SLOT), there are 
+8001/92 = 86   minus 1,  85 slots available for price storage.
+
+The system slot layout is as follows:
+
+Byte 
+0           Last allocated slot. This is used for applications that sequentially allocate slots. 
+1..91       Reserved
 ------------------------------------------------------------------------------------------------
 """
 from inspect import currentframe
@@ -108,8 +119,9 @@ PRODUCT_PRICE_KEY_LEN = Int(64)
 #
 
 GLOBAL_SLOT_SIZE = 92
-MAX_SLOTS = int(63 * 127 / GLOBAL_SLOT_SIZE)
+MAX_SLOTS = int((63 * 127 / GLOBAL_SLOT_SIZE) - 1)
 FREE_ENTRY = Bytes('base16', '0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
+SYSTEM_SLOT_INDEX = Int(85)
 
 BLOCK1_OFFSET = Int(64)
 BLOCK1_LEN = Int(36)

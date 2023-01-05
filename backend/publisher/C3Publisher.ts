@@ -24,7 +24,7 @@ import * as Logger from '@randlabs/js-logger'
 import algosdk, { Account, Algodv2, assignGroupID, SuggestedParams } from 'algosdk'
 import { getPriceIdsInVaa } from '../common/pythPayload'
 import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
-import { slotLayout } from '../../settings/slot-config'
+import { SlotLayout } from '../common/slotLayout'
 import _ from 'underscore'
 import PricecasterLib, { PRICECASTER_CI, AsaIdSlot } from '../../lib/pricecaster'
 import { IPublisher } from './IPublisher'
@@ -37,7 +37,8 @@ export class PricecasterPublisher implements IPublisher {
   constructor (readonly algodv2: Algodv2,
     readonly senderAccount: algosdk.Account,
     readonly stats: Statistics,
-    readonly settings: IAppSettings) {
+    readonly settings: IAppSettings,
+    readonly slotLayout: SlotLayout) {
     this.algodClient = algodv2
     this.pclib = new PricecasterLib(this.algodClient, senderAccount.addr)
     this.pclib.enableDumpFailedTx(this.settings.algo.dumpFailedTx)
@@ -87,10 +88,7 @@ export class PricecasterPublisher implements IPublisher {
   buildAsaIdSlots (priceIdsInVaa: string[]): AsaIdSlot[] {
     const asaIdSlots: AsaIdSlot[] = []
     for (let i = 0; i < priceIdsInVaa.length; i++) {
-      const slotInfo = slotLayout[this.settings.network].find((v) => {
-        // console.log(v.priceId, priceIdsInVaa[i])
-        return v.priceId === priceIdsInVaa[i]
-      })
+      const slotInfo = this.slotLayout.getSlotByPriceId(priceIdsInVaa[i])
       asaIdSlots.push(slotInfo ? { asaid: slotInfo.asaId, slot: slotInfo.index } : { asaid: -1, slot: 0xff })
     }
     return asaIdSlots

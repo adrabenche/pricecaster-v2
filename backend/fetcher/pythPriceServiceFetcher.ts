@@ -25,7 +25,7 @@ import { HexString } from '@pythnetwork/pyth-common-js'
 import { PriceServiceConnection2 } from './priceServiceClient'
 import { DataReadyCallback } from '../common/basetypes'
 import _ from 'underscore'
-import { SlotInfo, slotLayout } from '../../settings/slot-config'
+import { SlotLayout } from '../common/slotLayout'
 import { Statistics } from 'backend/engine/Stats'
 
 async function nullCallback (v: Buffer[]) {}
@@ -37,11 +37,11 @@ export class PythPriceServiceFetcher {
   private dataReadyCallback: DataReadyCallback = nullCallback
   private priceIds: string[] = []
 
-  constructor (readonly settings: IAppSettings, readonly stats: Statistics) {
+  constructor (readonly settings: IAppSettings, readonly stats: Statistics, readonly slotLayout: SlotLayout) {
     this.priceServiceConnection = new PriceServiceConnection2(this.settings.pyth.priceService[this.settings.network],
       this.settings.pyth.priceServiceConfiguration)
 
-    this.priceIds = slotLayout[this.settings.network].map( (v: SlotInfo) => v.priceId)
+    this.priceIds = this.slotLayout.getPriceIds()
   }
 
   async setDataReadyCallback (drcb: DataReadyCallback) {

@@ -24,17 +24,19 @@ import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
 import { PricecasterPublisher as C3Publisher } from '../publisher/C3Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { NullPublisher } from '../publisher/NullPublisher'
-import { Algodv2 } from 'algosdk'
+import algosdk, { Algodv2 } from 'algosdk'
 import { IPublisher } from '../publisher/IPublisher'
 import { Statistics } from './Stats'
+import { SlotLayout } from '../common/slotLayout'
+import { bootstrapSlotLayout } from '../../settings/bootSlotLayout'
 const fs = require('fs')
-const algosdk = require('algosdk')
 
 export class WormholeClientEngine implements IEngine {
   private fetcher!: PythPriceServiceFetcher
   private publisher!: IPublisher
   private stats!: Statistics
   private settings: IAppSettings
+  private slotLayout!: SlotLayout
   private shouldQuit: boolean
   constructor (settings: IAppSettings) {
     this.settings = settings
@@ -57,12 +59,16 @@ export class WormholeClientEngine implements IEngine {
     })
 
     const algodClient = new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port)
-    let mnemo
+    let ownerAccount: algosdk.Account
     try {
-      mnemo = fs.readFileSync(this.settings.apps.ownerKeyFile)
+      const mnemo = fs.readFileSync(this.settings.apps.ownerKeyFile)
+      ownerAccount = algosdk.mnemonicToSecretKey((mnemo.toString()).trim())
     } catch (e) {
-      throw new Error('❌ Cannot read account key file: ' + e)
+      throw new Error('❌ Cannot get owner address: ' + e)
     }
+
+    this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings)
+    this.slotLayout.bootstrapSlotLayout(bootstrapSlotLayout)
 
     Logger.info('Starting statistics module...')
     this.stats = new Statistics()
@@ -71,9 +77,9 @@ export class WormholeClientEngine implements IEngine {
       Logger.warn('Using Null Publisher')
       this.publisher = new NullPublisher()
     } else {
-      this.publisher = new C3Publisher(algodClient, algosdk.mnemonicToSecretKey((mnemo.toString()).trim()), this.stats, this.settings)
+      this.publisher = new C3Publisher(algodClient, ownerAccount, this.stats, this.settings, this.slotLayout)
     }
-    this.fetcher = new PythPriceServiceFetcher(this.settings, this.stats)
+    this.fetcher = new PythPriceServiceFetcher(this.settings, this.stats, this.slotLayout)
 
     Logger.info('Waiting for publisher to boot...')
     this.publisher.start()
