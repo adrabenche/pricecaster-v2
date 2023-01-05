@@ -27,8 +27,8 @@ import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { slotLayout } from '../../settings/slot-config'
 import _ from 'underscore'
 import PricecasterLib, { PRICECASTER_CI, AsaIdSlot } from '../../lib/pricecaster'
-import { TxMonitor } from '../engine/TxMonitor'
 import { IPublisher } from './IPublisher'
+import { Statistics } from 'backend/engine/Stats'
 
 export class PricecasterPublisher implements IPublisher {
   private active: boolean
@@ -36,7 +36,7 @@ export class PricecasterPublisher implements IPublisher {
   private pclib: PricecasterLib
   constructor (readonly algodv2: Algodv2,
     readonly senderAccount: algosdk.Account,
-    readonly txMonitor: TxMonitor,
+    readonly stats: Statistics,
     readonly settings: IAppSettings) {
     this.algodClient = algodv2
     this.pclib = new PricecasterLib(this.algodClient, senderAccount.addr)
@@ -61,7 +61,7 @@ export class PricecasterPublisher implements IPublisher {
     }
     const t0 = _.now()
     const txParams = await this.algodClient.getTransactionParams().do()
-    console.log(`time. getTransactionParams: ${_.now() - t0}`)
+    // console.log(`time. getTransactionParams: ${_.now() - t0}`)
 
     const publishCalls: Promise<any>[] = []
     for (const vaa of vaaList) {
@@ -72,9 +72,10 @@ export class PricecasterPublisher implements IPublisher {
 
     pricesPublish.forEach((p) => {
       if (p.status === 'fulfilled') {
-        this.txMonitor.addPendingTx(p.value.txId)
+        this.stats.increaseSuccessTxCount()
       } else if (p.status === 'rejected') {
         console.log('Transaction rejected. Reason: ' + p.reason)
+        this.stats.increaseFailedTxCount()
       }
     })
   }
@@ -99,7 +100,6 @@ export class PricecasterPublisher implements IPublisher {
    * Submit the prices using the VAA.
    */
   async submit (txParams: SuggestedParams, vaa: Uint8Array): Promise<any> {
-    console.log('Submit VAA')
     const vaaParsed = parseVaa(vaa)
     const priceIdsInVaa = getPriceIdsInVaa(vaaParsed.payload)
     const asaIdSlots = this.buildAsaIdSlots(priceIdsInVaa)
@@ -111,7 +111,7 @@ export class PricecasterPublisher implements IPublisher {
     const t0 = _.now()
     const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(getWormholeCoreAppId(this.settings)),
       new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.settings.apps.pricecasterAppId))
-    console.log(`submitVaaState time: ${_.now() - t0}`)
+    // console.log(`submitVaaHeader time: ${_.now() - t0}ms`)
 
     txs.push(...submitVaaState.txs)
     txParams.fee = 1000 * (priceIdsInVaa.length - 1)

@@ -19,13 +19,12 @@
  */
 
 import { IEngine } from './IEngine'
-import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
+import { IAppSettings } from '../common/settings'
 import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
 import { PricecasterPublisher as C3Publisher } from '../publisher/C3Publisher'
 import * as Logger from '@randlabs/js-logger'
 import { NullPublisher } from '../publisher/NullPublisher'
 import { Algodv2 } from 'algosdk'
-import { TxMonitor } from './TxMonitor'
 import { IPublisher } from '../publisher/IPublisher'
 import { Statistics } from './Stats'
 const fs = require('fs')
@@ -34,7 +33,6 @@ const algosdk = require('algosdk')
 export class WormholeClientEngine implements IEngine {
   private fetcher!: PythPriceServiceFetcher
   private publisher!: IPublisher
-  private txMonitor!: TxMonitor
   private stats!: Statistics
   private settings: IAppSettings
   private shouldQuit: boolean
@@ -49,7 +47,6 @@ export class WormholeClientEngine implements IEngine {
       Logger.warn('Received SIGINT')
       this.publisher.stop()
       this.fetcher.shutdown()
-      this.txMonitor.stop()
       await Logger.finalize()
     }
   }
@@ -70,17 +67,13 @@ export class WormholeClientEngine implements IEngine {
     Logger.info('Starting statistics module...')
     this.stats = new Statistics()
 
-    Logger.info(`Starting TxMonitor with confirmation threshold ${this.settings.txMonitor.confirmationThreshold}, interval ${this.settings.txMonitor.updateIntervalMs} msec`)
-    this.txMonitor = new TxMonitor(this.settings, algodClient, this.stats)
-    this.txMonitor.start()
-
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')
       this.publisher = new NullPublisher()
     } else {
-      this.publisher = new C3Publisher(algodClient, algosdk.mnemonicToSecretKey((mnemo.toString()).trim()), this.txMonitor, this.settings)
+      this.publisher = new C3Publisher(algodClient, algosdk.mnemonicToSecretKey((mnemo.toString()).trim()), this.stats, this.settings)
     }
-    this.fetcher = new PythPriceServiceFetcher(this.settings)
+    this.fetcher = new PythPriceServiceFetcher(this.settings, this.stats)
 
     Logger.info('Waiting for publisher to boot...')
     this.publisher.start()

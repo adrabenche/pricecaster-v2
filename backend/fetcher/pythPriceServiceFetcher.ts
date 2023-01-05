@@ -26,6 +26,7 @@ import { PriceServiceConnection2 } from './priceServiceClient'
 import { DataReadyCallback } from '../common/basetypes'
 import _ from 'underscore'
 import { SlotInfo, slotLayout } from '../../settings/slot-config'
+import { Statistics } from 'backend/engine/Stats'
 
 async function nullCallback (v: Buffer[]) {}
 
@@ -36,7 +37,7 @@ export class PythPriceServiceFetcher {
   private dataReadyCallback: DataReadyCallback = nullCallback
   private priceIds: string[] = []
 
-  constructor (readonly settings: IAppSettings) {
+  constructor (readonly settings: IAppSettings, readonly stats: Statistics) {
     this.priceServiceConnection = new PriceServiceConnection2(this.settings.pyth.priceService[this.settings.network],
       this.settings.pyth.priceServiceConfiguration)
 
@@ -72,7 +73,7 @@ export class PythPriceServiceFetcher {
     await this.dataReadyCallback(vaaList.flat())
 
     const t1 = _.now() - t0
-    Logger.debug(1, `Finished callback: ${vaaList.flat().length} VAAs, cycle time ${t1}ms`)
+    Logger.debug(1, `Sent ${vaaList.flat().length} VAAs, total cycle time ${t1}ms. TX stats: ${this.stats.getSuccessTxCount()} ok, ${this.stats.getFailedTxCount()} failed`)
 
     if (this.active) {
       setTimeout(async () => { this.getVaas() }, this.settings.pyth.priceService.pollIntervalMs)

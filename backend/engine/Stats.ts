@@ -18,33 +18,43 @@
  * limitations under the License.
  */
 
-export type TxStats = {
-  total: number,
-  pending: number,
+type TxStats = {
   error: number,
-  success: number
-}
-
-export type CostStats = {
-    fees: number,
-    cost: number,
+  success: number,
+  avgCycleTime: number
+  fees: number,
+  cost: number,
 }
 
 export class Statistics {
+  private txStats: TxStats
   constructor () {
     this.txStats = {
-      total: 0,
-      pending: 0,
       error: 0,
-      success: 0
-    }
-
-    this.costStats = {
+      success: 0,
+      avgCycleTime: 0,
       fees: 0,
       cost: 0
     }
   }
 
-  txStats: TxStats
-  costStats: CostStats
+  increaseSuccessTxCount () {
+    this.txStats.success++
+  }
+
+  increaseFailedTxCount () {
+    this.txStats.error++
+  }
+
+  getSuccessTxCount (): number {
+    return this.txStats.success
+  }
+
+  getFailedTxCount (): number {
+    return this.txStats.error
+  }
+
+  getAvgCycleTime (): number {
+    return this.getAvgCycleTime()
+  }
 }
