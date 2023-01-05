@@ -85,7 +85,27 @@ export const MAPPER_CI: ContractInfo = {
   appId: 0
 }
 
+export type PriceSlotData = {
+  asaId: number,
+  normalizedPrice: bigint,
+  pythPrice: bigint,
+  confidence: bigint,
+  exponent: number,
+  priceEMA: bigint,
+  confEMA: bigint,
+  attTime: bigint,
+  pubTime: bigint,
+  prevPubTime: bigint,
+  prevPrice: bigint,
+  prevConf: bigint
+}
+
 export type AsaIdSlot = { asaid: number, slot: number }
+export type SystemSlotInfo = { entryCount: number }
+
+const GLOBAL_SLOT_SIZE = 92
+const SYSTEM_SLOT_INDEX = 85
+const NUM_SLOTS = 86
 
 // --------------------------------------------------------------------------------------
 type SignCallback = (arg0: string, arg1: algosdk.Transaction) => any
@@ -480,7 +500,6 @@ export default class PricecasterLib {
     return this.algodClient.pendingTransactionInformation(txId).do()
   }
 
-
   /**
    * Pricecaster.-V2: Generate store price transaction.
    *
@@ -528,5 +547,74 @@ export default class PricecasterLib {
       assetIds)
 
     return tx
+  }
+
+  /**
+   * Fetch the global store blob space
+   * @returns Buffer with the entire global store
+   */
+  async fetchGlobalSpace (): Promise<Buffer> {
+    let buf: Buffer = Buffer.alloc(0)
+    for await (const i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) {
+      const val = Buffer.from(await this.readGlobalStateByKey(String.fromCharCode(i), PRICECASTER_CI, true), 'base64')
+      buf = Buffer.concat([buf, val])
+    }
+    return buf
+  }
+
+  /**
+   * Read a global space slot by index.
+   * @param slot The slot index
+   * @returns  The slot information in a buffer
+   */
+  async readSlot (slot: number): Promise<Buffer> {
+    return (await this.fetchGlobalSpace()).subarray(GLOBAL_SLOT_SIZE * slot, GLOBAL_SLOT_SIZE * slot + GLOBAL_SLOT_SIZE)
+  }
+
+  /**
+   * Read the Pricecaster contract system slot.
+   * @returns The system slot information
+   */
+  async readSystemSlot (): Promise<SystemSlotInfo> {
+    const sysSlotBuf = await this.readSlot(SYSTEM_SLOT_INDEX)
+    return {
+      entryCount: sysSlotBuf.readUInt8(0)
+    }
+  }
+
+  async readParsePriceSlot (slot: number): Promise<PriceSlotData> {
+    if (slot < 0 || slot > NUM_SLOTS) {
+      throw new Error('Invalid slot number')
+    }
+    if (slot === SYSTEM_SLOT_INDEX) {
+      throw new Error('Cannot parse system slot with this call')
+    }
+    const dataBuf = await this.readSlot(slot)
+    const asaId = dataBuf.subarray(0, 8).readBigInt64BE()
+    const normalizedPrice = dataBuf.subarray(8, 16).readBigUint64BE()
+    const pythPrice = dataBuf.subarray(16, 24).readBigUint64BE()
+    const confidence = dataBuf.subarray(24, 32).readBigUint64BE()
+    const exp = dataBuf.subarray(32, 36).readInt32BE()
+    const priceEMA = dataBuf.subarray(36, 44).readBigUint64BE()
+    const confEMA = dataBuf.subarray(44, 52).readBigUint64BE()
+    const attTime = dataBuf.subarray(52, 60).readBigUint64BE()
+    const pubTime = dataBuf.subarray(60, 68).readBigUint64BE()
+    const prevPubTime = dataBuf.subarray(68, 76).readBigUint64BE()
+    const prevPrice = dataBuf.subarray(76, 84).readBigUint64BE()
+    const prevConf = dataBuf.subarray(84, 92).readBigUInt64BE()
+    return {
+      asaId: parseInt(asaId.toString()),
+      pythPrice,
+      normalizedPrice,
+      confidence,
+      exponent: exp,
+      priceEMA,
+      confEMA,
+      attTime,
+      pubTime,
+      prevPubTime,
+      prevPrice,
+      prevConf
+    }
   }
 }
