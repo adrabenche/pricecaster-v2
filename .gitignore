@@ -115,3 +115,5 @@ dist/*
 *.pyc
 
 *.teal
+db/pricecaster.db
+db/dummy.txt
