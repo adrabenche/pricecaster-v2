@@ -37,17 +37,32 @@ export class SlotLayout {
     this.db = new Database(dbFullName)
   }
 
-  async init () {
-    if (process.env.BOOTSTRAPDB === '1') {
-      Logger.warn('Bootstrapping process starting')
-      this.createSlotLayoutTable(true)
-      await this.resetContractSlots()
-      await this.bootstrapSlotLayout(bootstrapSlotLayoutInfo[this.settings.network])
-    } else if (process.env.RESETDB === '1') {
-      this.createSlotLayoutTable(true)
-    } else if (process.env.RESETCONTRACT === '1') {
-      this.resetContractSlots()
+  async init (): Promise<boolean> {
+    let ok = true
+    try {
+      if (process.env.BOOTSTRAPDB === '1') {
+        Logger.warn('Bootstrapping process starting')
+        this.createSlotLayoutTable(true)
+        await this.resetContractSlots()
+        await this.bootstrapSlotLayout(bootstrapSlotLayoutInfo[this.settings.network])
+      } else if (process.env.RESETDB === '1') {
+        this.createSlotLayoutTable(true)
+      } else if (process.env.RESETCONTRACT === '1') {
+        this.resetContractSlots()
+      }
+
+      if (!await this.preflightConsistencyCheck()) {
+        Logger.error('Consistency check failed. ')
+        ok = false
+      } else {
+        Logger.info('Good, Pricecaster onchain and database slot layouts consistent.')
+      }
+    } catch (e: any) {
+      Logger.error('Initialization failed: ' + e.toString())
+      ok = false
     }
+
+    return ok
   }
 
   /**
@@ -64,16 +79,13 @@ export class SlotLayout {
    * Zero all the contract slots, resetting the Pricecaster to initial state.
    */
   private async resetContractSlots () {
-    try {
-      const txParams = await this.algodClient.getTransactionParams().do()
-      txParams.fee = 2000
-      const tx = this.pclib.makeResetTx(this.ownerAccount.addr, txParams)
-      const { txId } = await this.algodClient.sendRawTransaction(tx.signTxn(this.ownerAccount.sk)).do()
-      await this.pclib.waitForTransactionResponse(txId)
-      Logger.warn('Contract zeroed.')
-    } catch (e: any) {
-      Logger.error('Reset contract call failed. ' + e.toString())
-    }
+    Logger.warn('Resetting contract.')
+    const txParams = await this.algodClient.getTransactionParams().do()
+    txParams.fee = 2000
+    const tx = this.pclib.makeResetTx(this.ownerAccount.addr, txParams)
+    const { txId } = await this.algodClient.sendRawTransaction(tx.signTxn(this.ownerAccount.sk)).do()
+    await this.pclib.waitForTransactionResponse(txId)
+    Logger.warn('Contract zeroed.')
   }
 
   /**
@@ -141,21 +153,39 @@ export class SlotLayout {
    */
   private async allocSlot (asaId: number, priceId: string): Promise<number> {
     const txParams = await this.algodClient.getTransactionParams().do()
-    let slotId = -1
-    let txResponse
-    try {
-      const tx = this.pclib.makeAllocSlotTx(this.ownerAccount.addr, asaId, txParams)
-      const { txId } = await this.algodClient.sendRawTransaction(tx.signTxn(this.ownerAccount.sk)).do()
-      txResponse = await this.pclib.waitForTransactionResponse(txId)
+    const tx = this.pclib.makeAllocSlotTx(this.ownerAccount.addr, asaId, txParams)
+    const { txId } = await this.algodClient.sendRawTransaction(tx.signTxn(this.ownerAccount.sk)).do()
+    const txResponse = await this.pclib.waitForTransactionResponse(txId)
 
-      // Extract from log
-      slotId = Number(txResponse.logs[0].readBigUInt64BE('ALLOC@'.length))
-      const stmt = this.db.prepare('INSERT INTO SlotLayout (Slot, PriceId, AsaId) VALUES (?, ? ,?)')
-      stmt.run(slotId, priceId, asaId)
-    } catch (e: any) {
-      Logger.error(e.toString())
+    // Extract from log
+    const slotId = Number(txResponse.logs[0].readBigUInt64BE('ALLOC@'.length))
+    const stmt = this.db.prepare('INSERT INTO SlotLayout (Slot, PriceId, AsaId) VALUES (?, ? ,?)')
+    stmt.run(slotId, priceId, asaId)
+    return slotId
+  }
+
+  /**
+   * Ensures that the database and contract slot layouts are consistent.
+   */
+  private async preflightConsistencyCheck (): Promise<boolean> {
+    Logger.info('Pre-flight consistency check running')
+    const sysSlot = await this.pclib.readSystemSlot()
+    let stmt = this.db.prepare('SELECT COUNT(*) FROM SlotLayout')
+    const rowCount = stmt.get()['COUNT(*)']
+    Logger.info(`Pricecaster onchain entry count: ${sysSlot.entryCount}, database count: ${rowCount}`)
+    if (rowCount !== sysSlot.entryCount) {
+      return false
     }
 
-    return slotId
+    stmt = this.db.prepare('SELECT * FROM SlotLayout')
+
+    for (const row of stmt.iterate()) {
+      const slotdata = await this.pclib.readParsePriceSlot(row.Slot)
+      Logger.info(`Pricecaster slot ${row.Slot} ASA: ${slotdata.asaId}, database ${row.AsaId}`)
+      if (slotdata.asaId !== row.AsaId) {
+        return false
+      }
+    }
+    return true
   }
 }

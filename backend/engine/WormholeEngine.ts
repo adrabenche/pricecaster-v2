@@ -69,10 +69,10 @@ export class WormholeClientEngine implements IEngine {
 
     this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings)
 
-    await this.slotLayout.init()
+    const initResult = await this.slotLayout.init()
 
     // When bootstrapping, bail out
-    if (process.env.BOOTSTRAPDB === '1') {
+    if (!initResult || process.env.BOOTSTRAPDB === '1') {
       Logger.info('Bailing out, bye')
       process.exit(0)
     }
