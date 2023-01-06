@@ -19,6 +19,7 @@
  */
 
 import algosdk from 'algosdk'
+import _ from 'underscore'
 // eslint-disable-next-line camelcase
 import tools from '../tools/app-tools'
 const fs = require('fs')
@@ -550,12 +551,32 @@ export default class PricecasterLib {
   }
 
   /**
+   * Allocates a new price slot.
+   *
+   * @param sender The sender account.
+   * @param asaid The ASA ID to be assigned to the new slot.
+   * @param suggestedParams  The transaction params.
+   * @returns
+   */
+  makeAllocSlotTx (sender: string, asaid: number, suggestedParams: algosdk.SuggestedParams): algosdk.Transaction {
+    const appArgs = []
+    appArgs.push(new Uint8Array(Buffer.from('alloc')), algosdk.encodeUint64(asaid))
+
+    const tx = algosdk.makeApplicationNoOpTxn(sender,
+      suggestedParams,
+      PRICECASTER_CI.appId,
+      appArgs)
+
+    return tx
+  }
+
+  /**
    * Fetch the global store blob space
    * @returns Buffer with the entire global store
    */
   async fetchGlobalSpace (): Promise<Buffer> {
     let buf: Buffer = Buffer.alloc(0)
-    for await (const i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) {
+    for await (const i of _.range(0, 63)) {
       const val = Buffer.from(await this.readGlobalStateByKey(String.fromCharCode(i), PRICECASTER_CI, true), 'base64')
       buf = Buffer.concat([buf, val])
     }
@@ -568,7 +589,8 @@ export default class PricecasterLib {
    * @returns  The slot information in a buffer
    */
   async readSlot (slot: number): Promise<Buffer> {
-    return (await this.fetchGlobalSpace()).subarray(GLOBAL_SLOT_SIZE * slot, GLOBAL_SLOT_SIZE * slot + GLOBAL_SLOT_SIZE)
+    const globalSpace = await this.fetchGlobalSpace()
+    return globalSpace.subarray(GLOBAL_SLOT_SIZE * slot, GLOBAL_SLOT_SIZE * slot + GLOBAL_SLOT_SIZE)
   }
 
   /**
@@ -581,6 +603,12 @@ export default class PricecasterLib {
       entryCount: sysSlotBuf.readUInt8(0)
     }
   }
+
+  /**
+   * Read and parse a price slot.
+   * @param slot The slot number.
+   * @returns Parsed price data stored in the slot.
+   */
 
   async readParsePriceSlot (slot: number): Promise<PriceSlotData> {
     if (slot < 0 || slot > NUM_SLOTS) {
