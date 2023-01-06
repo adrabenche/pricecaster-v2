@@ -594,11 +594,13 @@ export default class PricecasterLib {
    * @returns Buffer with the entire global store
    */
   async fetchGlobalSpace (): Promise<Buffer> {
-    let buf: Buffer = Buffer.alloc(0)
-    for await (const i of _.range(0, 63)) {
-      const val = Buffer.from(await this.readGlobalStateByKey(String.fromCharCode(i), PRICECASTER_CI, true), 'base64')
-      buf = Buffer.concat([buf, val])
-    }
+    const buf = Buffer.alloc(63 * 127)
+    const global: [] = await this.readGlobalState(PRICECASTER_CI)
+    const globalFiltered = global.filter((e: any) => { return e.key !== 'Y29yZWlk' }) // filter out 'coreid'
+    globalFiltered.forEach((e: any) => {
+      const offset = Buffer.from(e.key, 'base64').readUint8() * 127
+      buf.write(e.value.bytes, offset, 'base64')
+    })
     return buf
   }
 
