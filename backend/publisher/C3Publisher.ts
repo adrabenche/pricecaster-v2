@@ -112,7 +112,7 @@ export class PricecasterPublisher implements IPublisher {
     // console.log(`submitVaaHeader time: ${_.now() - t0}ms`)
 
     txs.push(...submitVaaState.txs)
-    txParams.fee = 1000 * (priceIdsInVaa.length - 1)
+    txParams.fee = 2000 * (priceIdsInVaa.length - 1)
     const tx = this.pclib.makePriceStoreTx(this.senderAccount.addr,
       asaIdSlots,
       vaaParsed.payload,
