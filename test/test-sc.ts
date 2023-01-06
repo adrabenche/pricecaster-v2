@@ -350,7 +350,7 @@ describe('Pricecaster App Tests', function () {
     asaInSlot[0] = assetMap[0].assetId!
   })
 
-  it('Must fail to store data in incorrect slot', async function() {
+  it('Must fail to store data in incorrect slot', async function () {
     await testFailCase(19, 1, 0, 85000000, undefined, 394)
   })
 
@@ -452,11 +452,25 @@ describe('Pricecaster App Tests', function () {
     await testFailCase(4, 1000, -8, 99999999999)
   })
 
+  it('Must zero contract with reset call', async function () {
+    const params = await algodClient.getTransactionParams().do()
+    params.fee = 2000
+
+    const tx = pclib.makeResetTx(ownerAccount.addr, params)
+
+    const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
+    const txResponse = await pclib.waitForTransactionResponse(txId)
+    expect(txResponse['pool-error']).to.equal('')
+
+    const global = await pclib.fetchGlobalSpace()
+    expect(global).to.deep.equal(Buffer.alloc(127 * 63))
+  })
+
 //  it('Must fail to store from non-creator account', async function () {
-    //const altAccount = generateAccount()
-    //const paymentTx = makePaymentTxnWithSuggestedParams(ownerAccount.addr, altAccount.addr, 400000, undefined, undefined, await algodClient.getTransactionParams().do())
-    //const paymentTxId = await algodClient.sendRawTransaction(paymentTx.signTxn(ownerAccount.sk)).do()
-    //await algosdk.waitForConfirmation(algodClient, paymentTxId.txId, 4)
-    //await testFailCase(4, 1, -8, undefined, altAccount)
-  //})
+  // const altAccount = generateAccount()
+  // const paymentTx = makePaymentTxnWithSuggestedParams(ownerAccount.addr, altAccount.addr, 400000, undefined, undefined, await algodClient.getTransactionParams().do())
+  // const paymentTxId = await algodClient.sendRawTransaction(paymentTx.signTxn(ownerAccount.sk)).do()
+  // await algosdk.waitForConfirmation(algodClient, paymentTxId.txId, 4)
+  // await testFailCase(4, 1, -8, undefined, altAccount)
+  // })
 })

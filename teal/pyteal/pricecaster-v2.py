@@ -410,11 +410,24 @@ def alloc_new_slot():
     #
     entryCount = ScratchVar(TealType.uint64)
     return Seq([
+        XAssert(is_creator()),
         entryCount.store(get_entry_count()),
         XAssert(entryCount.load() <= Int(MAX_PRICE_SLOTS)),
         inc_entry_count(entryCount.load()),
         write_slot(entryCount.load(), Replace(FREE_ENTRY, Int(0), ALLOC_ASA_ID)),
         Log(Concat(Bytes("ALLOC@"), Itob(entryCount.load()))),
+        Approve()
+    ])
+
+def reset(): 
+    #
+    # Resets all contract info to zero
+    #
+    op_pool = OpPool()
+    return Seq([
+        XAssert(is_creator()),
+        op_pool.maximize_budget(Int(1000)),
+        GlobalBlob.zero(),
         Approve()
     ])
 
@@ -425,7 +438,8 @@ def pricecaster_program():
     handle_optin = Return(Int(1))
     handle_noop = Cond(
         [METHOD == Bytes("store"), store()],
-        [METHOD == Bytes("alloc"), alloc_new_slot()]
+        [METHOD == Bytes("alloc"), alloc_new_slot()],
+        [METHOD == Bytes("reset"), reset()],
     )
     return Seq([
         # XAssert(Txn.rekey_to() == Global.zero_address()),

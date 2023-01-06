@@ -571,6 +571,25 @@ export default class PricecasterLib {
   }
 
   /**
+   * Resets the contract to zero.
+   *
+   * @param sender The sender account.
+   * @param suggestedParams  The transaction params.
+   * @returns
+   */
+  makeResetTx (sender: string, suggestedParams: algosdk.SuggestedParams): algosdk.Transaction {
+    const appArgs = []
+    appArgs.push(new Uint8Array(Buffer.from('reset')))
+
+    const tx = algosdk.makeApplicationNoOpTxn(sender,
+      suggestedParams,
+      PRICECASTER_CI.appId,
+      appArgs)
+
+    return tx
+  }
+
+  /**
    * Fetch the global store blob space
    * @returns Buffer with the entire global store
    */
