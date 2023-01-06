@@ -28,7 +28,7 @@ import algosdk, { Algodv2 } from 'algosdk'
 import { IPublisher } from '../publisher/IPublisher'
 import { Statistics } from './Stats'
 import { SlotLayout } from '../common/slotLayout'
-import { bootstrapSlotLayout } from '../../settings/bootSlotLayout'
+import { bootstrapSlotLayoutInfo } from '../../settings/bootSlotLayout'
 const fs = require('fs')
 
 export class WormholeClientEngine implements IEngine {
@@ -68,7 +68,14 @@ export class WormholeClientEngine implements IEngine {
     }
 
     this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings)
-    this.slotLayout.bootstrapSlotLayout(bootstrapSlotLayout)
+
+    await this.slotLayout.init()
+
+    // When bootstrapping, bail out
+    if (process.env.BOOTSTRAPDB === '1') {
+      Logger.info('Bailing out, bye')
+      process.exit(0)
+    }
 
     Logger.info('Starting statistics module...')
     this.stats = new Statistics()

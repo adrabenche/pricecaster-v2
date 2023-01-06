@@ -89,7 +89,7 @@ export class PricecasterPublisher implements IPublisher {
     const asaIdSlots: AsaIdSlot[] = []
     for (let i = 0; i < priceIdsInVaa.length; i++) {
       const slotInfo = this.slotLayout.getSlotByPriceId(priceIdsInVaa[i])
-      asaIdSlots.push(slotInfo ? { asaid: slotInfo.asaId, slot: slotInfo.index } : { asaid: -1, slot: 0xff })
+      asaIdSlots.push(slotInfo ? { asaid: slotInfo.asaId, slot: slotInfo.slot! } : { asaid: -1, slot: 0xff })
     }
     return asaIdSlots
   }

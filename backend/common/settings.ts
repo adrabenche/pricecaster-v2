@@ -59,8 +59,8 @@ export interface IAppSettings extends Record<string, unknown> {
   debug?: {
     skipPublish?: boolean,
   },
-  wormhole: {
-    spyServiceHost: string
+  storage: {
+    db: string
   },
   network: 'testnet' | 'mainnet'
 }
@@ -74,7 +74,3 @@ export function getWormholeCoreAppId (settings: IAppSettings) {
 export function getWormholeBridgeAppId (settings: IAppSettings) {
   return CONTRACTS[netUpper(settings)].algorand.token_bridge
 }
-
-//export function getPriceIds (settings: IAppSettings): string[] {
-  //return settings.priceIds[settings.network]
-//}

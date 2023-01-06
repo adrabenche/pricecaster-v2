@@ -60,7 +60,7 @@ export type PythData = {
 }
 
 export type SlotInfo = {
-    index: number,
+    slot?: number,
     priceId: string,
     asaId: number
  }
