@@ -75,7 +75,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
 }
 
 (async () => {
-  console.log('\nPricecaster v2   Version 5.0  Apps Deployment Tool')
+  console.log('\nPricecaster v2   Version 7.0  Apps Deployment Tool')
   console.log('Copyright 2022 Randlabs Inc.\n')
 
   if (process.argv.length !== 5) {

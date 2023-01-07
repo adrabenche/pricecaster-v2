@@ -43,6 +43,32 @@ The verification of each received VAA is done by the tandem of Wormhole SDK plus
 
 The backend will currently **call the Pricecaster contract to store data** as the last TX group. See below for details on how Pricecaster works.
 
+## Prerequisites
+
+The pricecaster system requires the following components to run:
+
+* Algorand node.
+* **Pyth Price Service**. Pyth network offers two public endpoints: ```https://xc-testnet.pyth.network``` and ```https://xc-mainnet.pyth.network```.  This is enough for development and non-production deployments; for production Pyth recommends a dedicated installation. See https://github.com/pyth-network/pyth-crosschain/tree/main/third_party/pyth/price-service.  Note that a dedicated installation **also requires a Wormhole spy deployment**. 
+
+* Deployed Wormhole contracts 
+
+For local development the recommendation is to use **Tilt** to run: an Algorand sandbox with deployed Wormhole contracts, a set of guardians and Wormhole daemon, ready to be used.  This is hard to deploy by-hand, you have been warned.
+
+To use Tilt, 
+
+* Install Docker + Kubernetes Support.  The straightforward way is to use Docker Desktop and activate Kubernetes Support, both in Linux MacOS or Windows.
+* Install https://docs.tilt.dev/install.html.  Tilt can be installed under WSL.
+* Clone the Wormhole repository from  https://github.com/wormhole-foundation/wormhole.
+* Under this directory run
+
+  ```
+  tilt up -- --algorand
+  ```
+
+  The live Wormhole network runs 19 guardians, so to simulate more realistic conditions, set the number of guardians > 1 using the --num parameter.
+
+* Use the Tilt console to check for all services to be ready.  Note that the Algorand sandbox will have several pre-made and pre-funded accounts with vanity-addresses prefixed by `DEV...`  Use those accounts for development only!
+
 ## Pricecaster Onchain App Storage
 
 The Pricecaster Smart Contract mantains a global space of storage with a layout of logical slots that are sequentially added as required. The global space key/value entries are stored as follows:
@@ -113,17 +139,7 @@ With this in mind, the normalized price format will yield the following values w
 |0  |0  | p' = p*10^12|
 |19 |0  | p' = 0| 
 
-### Reset operation
-
-The linear space can be zeroed, thus deallocating all slots and resetting the entry count to 0, by calling the privileged operation **reset**.
-
-
-
-The Pricecaster App mantains a record of product/asset symbols (e.g ALGO/USD, BTC/USDT) indexed by keys of ASA IDs and a byte array encoding price and metrics information. As the original Pyth Payload is 150-bytes long and it wouldn't fit in the value field for each key, the Pricecaster contract converts on-the-fly the payload to a more compact form, discarding unneeded information.
-
-The Pricecaster App stores the following stateful information:
-
-* `coreId`:  The accepted Wormhole Core application Id.
+### Store operation
 
 The Pricecaster app will allow storage to succeed only if the transaction group contains:
 
@@ -133,10 +149,11 @@ The Pricecaster app will allow storage to succeed only if the transaction group 
 * Payment transfers for upfront fees from owner.
 * There must be at least one app call to Wormhole Core Id.
 
-Consumers must interpret the stored bytes as fields organized as:
+For normalized price calculation, the onchain ASA information is retrieved for the number of decimals. The exception is the ASA ID 0 which is used for **ALGO** with hardcoded 6 (six) decimals.
 
+### Reset operation
 
-
+The linear space can be zeroed, thus deallocating all slots and resetting the entry count to 0, by calling the privileged operation **reset**.
 
 
 ## Installation
@@ -149,64 +166,12 @@ npm install
 
 ## Deployment of Applications
 
-* The Wormhole Core contract and the VAA Verify code have it's own deployment tool `algorand/admin.py` at the Certus One repository. 
-
-Here is a sample output to deploy the Core Contracts in a sandboxed environment: 
-
-```$ python admin.py --devnet --boot
-(True, 'teal/core_approve.teal', 'teal/core_clear.teal', <algosdk.v2client.algod.AlgodClient object at 0x00000181066117E0>, 1002000, <TmplSig.TmplSig object at 0x0000018106611780>, True)
-Writing teal/core_approve.teal
-Writing teal/core_clear.teal
-Generating the teal for the core contracts
-Writing teal/token_approve.teal
-Writing teal/token_clear.teal
-Generating the teal for the token contracts: 4289
-Generating the foundation account...
-L9gdTqISnJFAwNgA10HFZ9ht+7SwtZ74TIzaMV8SV3nvYTyYkfnOklIxXQLpPsbQCjjNzsLZ+wbRX3xcjcK1vA==
-    album jazz check clay deal caught acoustic sugar theme also tired major sweet disagree mad remember because crop economy buffalo salmon setup skirt about gravity
-    55QTZGER7HHJEURRLUBOSPWG2AFDRTOOYLM7WBWRL56FZDOCWW6IMQYOU4
-KL347v/4UOjjG1usk1FKl7Ir0c0qF2mJahEX9buKwpH1Pb9oQQtnmiqxO31CXw+TbljMF1pI20BENHdKdI2fog==
-    pink title wash morning peanut wheel tenant force intact edge pioneer city first inmate filter blame coffee pretty master fabric jewel pencil mix above just
-    6U6362CBBNTZUKVRHN6UEXYPSNXFRTAXLJENWQCEGR3UU5ENT6RORDKSLA
-O0fX5N6oH7Y+LBNuiGNhz0Pz/ruMH3hDGtQu/ck31TZgr/b1yjwOtVx96AyF+Cj4aAuvOF5sfZGTm2YBP1VLNA==
-    trash fringe include mistake dismiss pulse giggle basket assist mixed radar diagram track zero grape buzz humor harbor head spray negative evil repeat ability relief
-    MCX7N5OKHQHLKXD55AGIL6BI7BUAXLZYLZWH3EMTTNTACP2VJM2P7VQ4TI
-QR6W4l7PKVIgdn+0ewEZw0eSQiMcLuWNmZGN4vOeJCwEqWbjAxODlHTRS8zHKJSprtmqa90CLXvUpLdetrfA8A==
-    sight flash image vote fatal behind rain legal isolate album milk label cause spawn three come royal great silver churn treat chicken gentle ability abstract
-    ASUWNYYDCOBZI5GRJPGMOKEUVGXNTKTL3UBC266UUS3V5NVXYDYBO2SK5A
-I2PB2eJQDiUUkJuxHtrfBBSNAK834YWap5iLtiMpSj8WeLLkp6FP9qpVSZEJ+XbIBIEwfSn1Jm4PYCapBXqozA==
-    good airport hollow athlete bronze announce level oppose stomach half husband doctor boss scan runway thrive expose oyster slush hamster electric medal where ability electric
-    CZ4LFZFHUFH7NKSVJGIQT6LWZACICMD5FH2SM3QPMATKSBL2VDGDX4P3DQ
-Te4Z62VmHq6hyl8fFp3rwRV/XKTK5KAMtPXf117oFLyGeeX5Qk6j277I6xMEXNh6rKSidaP+GA40oNPfKtYLPA==
-    situate guilt void green devote high fence garlic sentence inmate volume foster wreck blade festival tooth neglect south width law sad deliver thing absent dentist
-    QZ46L6KCJ2R5XPWI5MJQIXGYPKWKJITVUP7BQDRUUDJ56KWWBM6HW6FE74
-foundation address MCX7N5OKHQHLKXD55AGIL6BI7BUAXLZYLZWH3EMTTNTACP2VJM2P7VQ4TI  (100000.0 ALGO)
-
-Creating the PortalCore app
-Reading teal/core_approve.teal
-Reading teal/core_clear.teal
-{'address': 'JYJEGKPTKMW4SA2GX5J4XGGS2I4K2I2LLZN534P5KDEG4H7WYH2CF256K4',
- 'emitterAddress': '4e124329f3532dc90346bf53cb98d2d238ad234b5e5bddf1fd50c86e1ff6c1f4',
- 'wormhole core': '1054'}
-Create the token bridge
-Reading teal/token_approve.teal
-Reading teal/token_clear.teal
-token bridge contract is too large... This might prevent updates later
-{'address': 'XAMJRRHC36UE56QCLKS3HQ42EMWPMRBDCWGHFFT62PCAUOPWVXRDD5UF3M',
- 'emitterAddress': 'b81898c4e2dfa84efa025aa5b3c39a232cf64423158c72967ed3c40a39f6ade2',
- 'token bridge': '1056'}
-HFFy4BIqRzSIHs/OV0CY5e8UrfV3ns0QOWcfGwslXLSINIPubgTt57wILBF02Uc4hiW48pcXarei/6lLWNza4w==
-    castle sing ice patrol mixture artist violin someone what access slow wrestle clap hero sausage oyster boost tone receive rapid bike announce pepper absent involve
-    RA2IH3TOATW6PPAIFQIXJWKHHCDCLOHSS4LWVN5C76UUWWG43LRQNHGCD4
-Sent some ALGO to: castle sing ice patrol mixture artist violin someone what access slow wrestle clap hero sausage oyster boost tone receive rapid bike announce pepper absent involve
-```
-
 * To deploy the Pricecaster-V2, follow the instructions below.
 
 Use the deployment tools in `tools` subdirectory.
 
-* To deploy Pricecaster V2 TEAL to use with Wormhole, make sure you have Python environment running (preferably >=3.7.0), and `pyteal` installed with `pip3`.  
-* The deployment program will:  generate all TEAL files from PyTEAL sources and deploy the Pricekeeper V2 contract.
+* To deploy Pricecaster V2 TEAL to use with Wormhole, make sure you have Python environment running (preferably >=3.7.0), and `pyteal` installed with `pip3`.  PyTEAL >= 0.18 is required.
+* The deployment program will generate all TEAL files from PyTEAL sources and deploy the Pricecaster contract.
 
 For example, using `deploy` with sample output: 
 
@@ -214,25 +179,26 @@ For example, using `deploy` with sample output:
 $ npx ts-node  tools/deploy.ts 86525623 testnet keys/owner.key
 
 
-Pricecaster v2   Version 5.0  Apps Deployment Tool
+Pricecaster v2   Version 7.0  Apps Deployment Tool
 Copyright 2022 Randlabs Inc.
 
-Parameters for deployment:
-From: XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM
+Parameters for deployment: 
+From: 4NM56GAFQEXSEVZCLAUA6WXFGTRD6ZCEGNLGT2LGLY25CHA6RLGHQLPJVM
 Network: testnet
 Wormhole Core AppId: 86525623
 
 Enter YES to confirm parameters, anything else to abort. YES
-,Pricecaster V2 Program     Version 5.0, (c) 2022-23 Randlabs, inc.
+,Pricecaster V2 TEAL Program     Version 7.0, (c) 2022-23 Randlabs, inc.
 Compiling approval program...
 Written to teal/build/pricecaster-v2-approval.teal
 Compiling clear state program...
 Written to teal/build/pricecaster-v2-clear.teal
 ,
-Creating Pricekeeper V2...
-txId: RKNGKKO5WQ7W4JYNYDU2RYMBISFX4W7RQ2GJKCBIPV2IA4QWL75A
-Deployment App Id: 105363628
-Writing deployment results file DEPLOY-1660680886392...
+Deploying Pricecaster V2 Application...
+txId: DASH2CFGFKZZQR5SCNBE3MAJ65FXTU7345LY6QNPU4ZIFO2OHGTA
+Deployment App Id: 152656721
+Writing deployment results file DEPLOY-1673103606201...
+Bye.
 ```
 
 * Use the generated `DEPLOY-XXX` file to set values in the settings file regarding app ids.
@@ -250,14 +216,14 @@ The following settings are available:
 |algo.port   | The port to connect to the desired Algorand node.  |  
 |algo.dumpFailedTx|  Set to `true` to dump failed transactions. Intended for debugging and analysis. |
 |algo.dumpFailedTxDirectory|  Destination of .STXN (signed-transaction) files for analysis. |
+| pyth.priceService.mainnet | The Pyth price service URL for mainnet connection |
+| pyth.priceService.testnet | The Pyth price service URL for testnet connection | 
+| pyth.priceService.pollIntervalMs | The interval between the block of prices are polled from the Pyth Price service | 
 |    apps.pricecasterAppId | The application Id of the deployed VAA priceKeeper V2 TEAL program |
-|    apps.ownerAddress | The owner account address for the deployed programs |
 |    apps.ownerKeyFile| The file containing keys for the owner file. |
-|apps.asaIdMapperDataNetwork|  The network (testnet or mainnet) that the Mapper use to convert values |
-| pyth.chainId | The chainId of the Pyth data source |
-| pyth.emitterAddress | The address (in hex) of the Pyth emitter |
-| wormhole.spyServiceHost | The URI to listen for VAAs coming from the guardiand Spy service |
-| symbols.sourceNetwork | The Pyth price information source (mainnet-beta, devnet or testnet), this is used to solve symbol to textual representation and to update the Mapper |
+| storage.db |  The SQLite database file used by the Pricecaster backend |
+| network |  Set to testnet or mainnet | 
+| debug.skipPublish | Set to `true` to just fetch the prices without publishing anything | 
 
 ### Diagnosing failed transactions
 
@@ -304,13 +270,13 @@ goal clerk dryrun-remote -D dump.dr -v
 
 ```
 
-## Running the system
+## Backend operation 
 
 Check the `package.json` file for `npm run start-xxx`  automated commands. 
 
 ## Tests
 
-Requirement: Algorand Sandbox.
+The tests are designed to run under **Tilt** environment.   See the Prerequisites section above on how to setup Tilt.
 
 Run the Pricecaster contract tests with:
 
@@ -320,57 +286,14 @@ npm run test-sc
 
 Backend tests will come shortly.
 
-## Guardian Spy Setup
-
-The guardiand daemon in Spy mode can be bootstrapped using Docker.  An appropiate dockerfile for the `mainnet-beta` network at the time of this writing is:
-
-```
-FROM docker.io/golang:1.17.0-alpine as builder
-
-RUN apk add --no-cache git gcc linux-headers alpine-sdk bash
-
-WORKDIR /app
-RUN git clone https://github.com/certusone/wormhole.git
-
-WORKDIR /app/wormhole/tools
-RUN CGO_ENABLED=0 ./build.sh
-
-WORKDIR /app/wormhole
-RUN tools/bin/buf lint && tools/bin/buf generate
-
-WORKDIR /app/wormhole/node/tools
-RUN go build -mod=readonly -o /dlv github.com/go-delve/delve/cmd/dlv
-
-WORKDIR /app/wormhole/node
-RUN go build -race -gcflags="all=-N -l" -mod=readonly -o /guardiand github.com/certusone/wormhole/node
-
-FROM docker.io/golang:1.17.0-alpine
-
-WORKDIR /app
-COPY --from=builder /guardiand /app/guardiand
-
-ENV PATH="/app:${PATH}"
-RUN addgroup -S pyth -g 10001 && adduser -S pyth -G pyth -u 10001
-RUN chown -R pyth:pyth .
-USER pyth
-
-ENTRYPOINT [ "guardiand", "spy", "--nodeKey", "/tmp/node.key" ]
-
-```
-
-You can bootstrap the dockerfile with: 
-
-```
-docker run -ti guardian-mainnet --nodeKey /tmp/node.key --spyRPC [::]:7074 --network /wormhole/mainnet/2 --bootstrap /dns4/wormhole-mainnet-v2-bootstrap.certus.one/udp/8999/quic/p2p/12D3KooWQp644DK27fd3d4Km3jr7gHiuJJ5ZGmy8hH4py7fP4FP7
-```
-
-For deployment, use `-p 7074` to expose ports; remove `-ti` and add `-d` to leave the container running in the background. (detached mode)
-
-
 ## Pricecaster SDK
 
 A Work-in-progress Javascript SDK exists, along with a React app showing how consumers can fetch symbols, price information from the contract,  and display this information in real-time. 
 Refer to the `pricecaster-sdk` repository.
+
+## Additional tools
+
+
 
 ## Appendix
 
