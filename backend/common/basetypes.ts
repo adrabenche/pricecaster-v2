@@ -37,8 +37,6 @@ export type VAA = {
   payload: Buffer
 }
 export type PythAttestation = {
-  asaId: number,
-  symbol: string,
   productId: Buffer,
   priceId: Buffer,
   price: BigInt,
@@ -60,3 +58,9 @@ export type PythData = {
   payload: Buffer,
   attestations: PythAttestation[]
 }
+
+export type SlotInfo = {
+    slot?: number,
+    priceId: string,
+    asaId: number
+ }

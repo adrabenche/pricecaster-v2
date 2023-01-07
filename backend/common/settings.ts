@@ -49,9 +49,8 @@ export interface IAppSettings extends Record<string, unknown> {
     dumpFailedTxDirectory?: string
   },
   apps: {
-    pricecasterAppId: bigint,
+    pricecasterAppId: number,
     ownerKeyFile: string,
-    asaIdMapperAppId: number,
   },
   txMonitor: {
     updateIntervalMs: number,
@@ -60,13 +59,9 @@ export interface IAppSettings extends Record<string, unknown> {
   debug?: {
     skipPublish?: boolean,
   },
-  wormhole: {
-    spyServiceHost: string
+  storage: {
+    db: string
   },
-  priceIds: {
-    testnet: string[],
-    mainnet: string[]
-  }
   network: 'testnet' | 'mainnet'
 }
 
@@ -78,8 +73,4 @@ export function getWormholeCoreAppId (settings: IAppSettings) {
 
 export function getWormholeBridgeAppId (settings: IAppSettings) {
   return CONTRACTS[netUpper(settings)].algorand.token_bridge
-}
-
-export function getPriceIds (settings: IAppSettings): string[] {
-  return settings.priceIds[settings.network]
 }

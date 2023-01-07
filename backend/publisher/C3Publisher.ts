@@ -22,29 +22,28 @@ import { parseVaa } from '@certusone/wormhole-sdk'
 import { submitVAAHeader, TransactionSignerPair } from '@certusone/wormhole-sdk/lib/cjs/algorand'
 import * as Logger from '@randlabs/js-logger'
 import algosdk, { Account, Algodv2, assignGroupID, SuggestedParams } from 'algosdk'
+import { getPriceIdsInVaa } from '../common/pythPayload'
+import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
+import { SlotLayout } from '../common/slotLayout'
 import _ from 'underscore'
-import PricecasterLib, { PRICECASTER_CI } from '../../lib/pricecaster'
-import { TxMonitor } from '../engine/txMonitor'
+import PricecasterLib, { PRICECASTER_CI, AsaIdSlot } from '../../lib/pricecaster'
 import { IPublisher } from './IPublisher'
+import { Statistics } from 'backend/engine/Stats'
 
 export class PricecasterPublisher implements IPublisher {
   private active: boolean
   private algodClient: algosdk.Algodv2
   private pclib: PricecasterLib
-  constructor (readonly wormholeCoreId: bigint,
-    readonly priceCasterAppId: bigint,
+  constructor (readonly algodv2: Algodv2,
     readonly senderAccount: algosdk.Account,
-    readonly algodv2: Algodv2,
-    readonly txMonitor: TxMonitor,
-    readonly dumpFailedTx: boolean = false,
-    readonly dumpFailedTxDirectory: string = './') {
+    readonly stats: Statistics,
+    readonly settings: IAppSettings,
+    readonly slotLayout: SlotLayout) {
     this.algodClient = algodv2
     this.pclib = new PricecasterLib(this.algodClient, senderAccount.addr)
-    this.pclib.enableDumpFailedTx(this.dumpFailedTx)
-    this.pclib.setDumpFailedTxDirectory(this.dumpFailedTxDirectory)
-
-    // HORRIBLE!!!! FIX ME:  Change Appid to bigints!
-    this.pclib.setAppId(PRICECASTER_CI, parseInt(priceCasterAppId.toString()))
+    this.pclib.enableDumpFailedTx(this.settings.algo.dumpFailedTx)
+    this.pclib.setDumpFailedTxDirectory(this.settings.algo.dumpFailedTxDirectory ?? '/.')
+    this.pclib.setAppId(PRICECASTER_CI, this.settings.apps.pricecasterAppId)
     this.active = false
   }
 
@@ -63,7 +62,7 @@ export class PricecasterPublisher implements IPublisher {
     }
     const t0 = _.now()
     const txParams = await this.algodClient.getTransactionParams().do()
-    console.log(`time. getTransactionParams: ${_.now() - t0}`)
+    // console.log(`time. getTransactionParams: ${_.now() - t0}`)
 
     const publishCalls: Promise<any>[] = []
     for (const vaa of vaaList) {
@@ -74,43 +73,59 @@ export class PricecasterPublisher implements IPublisher {
 
     pricesPublish.forEach((p) => {
       if (p.status === 'fulfilled') {
-        console.log('fulfilled')
-        //this.txMonitor.addPendingTx(p.value)
+        this.stats.increaseSuccessTxCount()
+      } else if (p.status === 'rejected') {
+        console.log('Transaction rejected. Reason: ' + p.reason)
+        this.stats.increaseFailedTxCount()
       }
     })
   }
 
-  async submit (txParams: SuggestedParams, vaa: Uint8Array): Promise<any> {
-    console.log('submit')
-    let offset = 0
-    const vaaParsed = parseVaa(vaa)
-    console.log(vaaParsed.payload.length)
-    const flatU8ArrayAssetIds = new Uint8Array(8 * 5)
-    const intAssetIds: number[] = []
-    flatU8ArrayAssetIds.set(algosdk.encodeUint64(0), offset)
-    intAssetIds.push(0)
-    offset += 8
-
-    try {
-      const txs: TransactionSignerPair[] = []
-      const signedGroupedTxns: Uint8Array[] = []
-      const t0 = _.now()
-      const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(this.wormholeCoreId), new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.priceCasterAppId))
-      console.log(`time. submitVaaState: ${_.now() - t0}`)
-
-      txs.push(...submitVaaState.txs)
-      const tx = this.pclib.makePriceStoreTx(this.senderAccount.addr, flatU8ArrayAssetIds, intAssetIds, vaaParsed.payload, txParams)
-      txs.push({ tx, signer: null })
-
-      assignGroupID(txs.map((tx) => tx.tx))
-      const signedTxns = await sign(txs, this.senderAccount)
-
-      signedGroupedTxns.push(...signedTxns)
-      const txReq = this.algodClient.sendRawTransaction(signedGroupedTxns).do()
-      return txReq
-    } catch (e: any) {
-      Logger.error(`Error generating submit-VAA or Price store TX for VAA: ${vaaParsed}, error ${e.toString()}`)
+  /**
+   * Build the ASAIDSlots structure used to build "store" call.
+   * For ASAs that we want to ignore, a -1 value is set.
+   */
+  buildAsaIdSlots (priceIdsInVaa: string[]): AsaIdSlot[] {
+    const asaIdSlots: AsaIdSlot[] = []
+    for (let i = 0; i < priceIdsInVaa.length; i++) {
+      const slotInfo = this.slotLayout.getSlotByPriceId(priceIdsInVaa[i])
+      asaIdSlots.push(slotInfo ? { asaid: slotInfo.asaId, slot: slotInfo.slot! } : { asaid: -1, slot: 0xff })
     }
+    return asaIdSlots
+  }
+
+  /**
+   * Submit the prices using the VAA.
+   */
+  async submit (txParams: SuggestedParams, vaa: Uint8Array): Promise<any> {
+    const vaaParsed = parseVaa(vaa)
+    const priceIdsInVaa = getPriceIdsInVaa(vaaParsed.payload)
+    const asaIdSlots = this.buildAsaIdSlots(priceIdsInVaa)
+
+    // console.log(asaIdSlots)
+
+    const txs: TransactionSignerPair[] = []
+    const signedGroupedTxns: Uint8Array[] = []
+    const t0 = _.now()
+    const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(getWormholeCoreAppId(this.settings)),
+      new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.settings.apps.pricecasterAppId))
+    // console.log(`submitVaaHeader time: ${_.now() - t0}ms`)
+
+    txs.push(...submitVaaState.txs)
+    txParams.fee = 2000 * (priceIdsInVaa.length - 1)
+    const tx = this.pclib.makePriceStoreTx(this.senderAccount.addr,
+      asaIdSlots,
+      vaaParsed.payload,
+      txParams)
+
+    txs.push({ tx, signer: null })
+
+    assignGroupID(txs.map((tx) => tx.tx))
+    const signedTxns = await sign(txs, this.senderAccount)
+
+    signedGroupedTxns.push(...signedTxns)
+    const txReq = this.algodClient.sendRawTransaction(signedGroupedTxns).do()
+    return txReq
   }
 }
 

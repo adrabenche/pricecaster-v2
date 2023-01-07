@@ -26,14 +26,9 @@ import { exit } from 'process'
 import { WormholeClientEngine } from './engine/WormholeEngine'
 import * as Logger from '@randlabs/js-logger'
 import { PC_COPYRIGHT, PC_VERSION } from './common/version'
-const charm = require('charm')();
 
 (async () => {
-  charm.pipe(process.stdout)
-  charm.reset()
-  charm.foreground('cyan').display('bright')
   console.log(`Pricecaster Service Backend  Version ${PC_VERSION} -- ${PC_COPYRIGHT}\n`)
-  charm.foreground('white').display('dim')
 
   let settings: IAppSettings
   try {

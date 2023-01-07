@@ -20,11 +20,13 @@
  */
 
 import * as Logger from '@randlabs/js-logger'
-import { getPriceIds, IAppSettings } from '../common/settings'
+import { IAppSettings } from '../common/settings'
 import { HexString } from '@pythnetwork/pyth-common-js'
 import { PriceServiceConnection2 } from './priceServiceClient'
 import { DataReadyCallback } from '../common/basetypes'
 import _ from 'underscore'
+import { SlotLayout } from '../common/slotLayout'
+import { Statistics } from 'backend/engine/Stats'
 
 async function nullCallback (v: Buffer[]) {}
 
@@ -33,10 +35,13 @@ export class PythPriceServiceFetcher {
   private active: boolean = false
   private allIds: HexString[] = []
   private dataReadyCallback: DataReadyCallback = nullCallback
+  private priceIds: string[] = []
 
-  constructor (readonly settings: IAppSettings) {
+  constructor (readonly settings: IAppSettings, readonly stats: Statistics, readonly slotLayout: SlotLayout) {
     this.priceServiceConnection = new PriceServiceConnection2(this.settings.pyth.priceService[this.settings.network],
       this.settings.pyth.priceServiceConfiguration)
+
+    this.priceIds = this.slotLayout.getPriceIds()
   }
 
   async setDataReadyCallback (drcb: DataReadyCallback) {
@@ -54,11 +59,11 @@ export class PythPriceServiceFetcher {
 
     const t0 = _.now()
 
-    const priceIdBlocks = _.chunk(getPriceIds(this.settings), this.settings.pyth.priceService.requestBlockSize)
+    const priceIdBlocks = _.chunk(this.priceIds, this.settings.pyth.priceService.requestBlockSize)
     const vaaList = []
     for await (const block of priceIdBlocks) {
       try {
-        Logger.debug(1, 'Calling request block...')
+        Logger.debug(1, `Calling request block for ${block.length} prices...`)
         const vaas = await this.priceServiceConnection.getLatestVaasForIds(block)
         vaaList.push(vaas)
       } catch (e: any) {
@@ -68,7 +73,7 @@ export class PythPriceServiceFetcher {
     await this.dataReadyCallback(vaaList.flat())
 
     const t1 = _.now() - t0
-    Logger.debug(1, `Finished callback: ${vaaList.flat().length} VAAs, cycle time ${t1}ms`)
+    Logger.debug(1, `Sent ${vaaList.flat().length} VAAs, total cycle time ${t1}ms. TX stats: ${this.stats.getSuccessTxCount()} ok, ${this.stats.getFailedTxCount()} failed`)
 
     if (this.active) {
       setTimeout(async () => { this.getVaas() }, this.settings.pyth.priceService.pollIntervalMs)

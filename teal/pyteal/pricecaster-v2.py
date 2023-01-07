@@ -66,6 +66,17 @@ TOTAL           92 Bytes.
 
 First byte of storage is reserved to keep number of entries.
 
+* The coreid entry in the global state points to the deployed Wormhole core.
+
+With this in mind, there is space for 127 * 63 bytes of space = 8001 bytes. 
+As the last slot space is reserved for internal use and future expansion (SYSTEM_SLOT), there are 
+8001/92 = 86   minus 1,  85 slots available for price storage.
+
+The system slot layout is as follows:
+
+Byte 
+0           Last allocated slot.  
+1..91       Reserved
 ------------------------------------------------------------------------------------------------
 """
 from inspect import currentframe
@@ -78,6 +89,7 @@ import sys
 METHOD = Txn.application_args[0]
 ASAID_SLOT_ARRAY = Txn.application_args[1]
 PYTH_PAYLOAD = Txn.application_args[2]
+ALLOC_ASA_ID = Txn.application_args[1]
 SLOT_TEMP = ScratchVar(TealType.uint64)
 WORMHOLE_CORE_ID = App.globalGet(Bytes("coreid"))
 PYTH_ATTESTATION_V2_BYTES = 149
@@ -107,9 +119,11 @@ PRODUCT_PRICE_KEY_LEN = Int(64)
 # BLOCK 2 (att_time,pub_time,prev_pub_time,prev_price,prev_conf)
 #
 
-GLOBAL_SLOT_SIZE = 92
-MAX_SLOTS = int(63 * 127 / GLOBAL_SLOT_SIZE)
+SLOT_SIZE = 92
+MAX_PRICE_SLOTS = int((63 * 127 / SLOT_SIZE) - 1)
 FREE_ENTRY = Bytes('base16', '0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
+SYSTEM_SLOT_INDEX = Int(85)
+SYSTEM_SLOT_OFFSET = SYSTEM_SLOT_INDEX * Int(SLOT_SIZE)
 
 BLOCK1_OFFSET = Int(64)
 BLOCK1_LEN = Int(36)
@@ -198,15 +212,12 @@ def find_asaid_index(asaId):
     return Seq([
         index.store(ENTRY_NOT_FOUND),
         offset.store(Int(0)),
-
-        # THEORY: Finding an asset that is on the last index (e.g 90) in 
-        # a full global table, will require 90 * 500 = base + 45k uALGO fee.
-
         op_pool.maximize_budget(Int(5000)),
+
         For(i.store(Int(1)),
-            i.load() < MAX_SLOTS, i.store(i.load() + Int(1))).Do(
+            i.load() < get_entry_count(), i.store(i.load() + Int(1))).Do(
             Seq([
-                offset.store(i.load() * Int(GLOBAL_SLOT_SIZE)),
+                offset.store(i.load() * Int(SLOT_SIZE)),
                 If(Btoi(GlobalBlob.read(offset.load(), offset.load() + UINT64_SIZE)) == asaId,
                    Seq([
                        index.store(i.load()),
@@ -216,11 +227,26 @@ def find_asaid_index(asaId):
         Return(index.load())
     ])
 
+@Subroutine(TealType.uint64)
+def get_entry_count():
+    return GetByte(read_slot(SYSTEM_SLOT_INDEX), Int(0))
+
+@Subroutine(TealType.none)
+def inc_entry_count(prevCount):
+    return GlobalBlob.write(SYSTEM_SLOT_INDEX * Int(SLOT_SIZE), Extract(Itob(prevCount + Int(1)), Int(7), Int(1)))
+
+
+@Subroutine(TealType.bytes)
+def read_slot(slot):
+    return GlobalBlob.read(slot * Int(SLOT_SIZE), (slot + Int(1)) * Int(SLOT_SIZE))
+
+
 @Subroutine(TealType.none)
 def write_slot(slot, data):
     return Seq([
-        XAssert(Len(data) == Int(GLOBAL_SLOT_SIZE)),
-        GlobalBlob.write(slot * Int(GLOBAL_SLOT_SIZE), data)
+        XAssert(Len(data) == Int(SLOT_SIZE)),
+        XAssert(slot < get_entry_count()),
+        GlobalBlob.write(slot * Int(SLOT_SIZE), data)
     ])
 
 
@@ -235,6 +261,7 @@ def publish_data(asa_id, attestation_data, slot):
     norm_exp = Int(0xffffffff) & (Int(0x100000000) - exponent.load())
 
     return Seq([
+
         If (
             asa_id == Int(0), 
 
@@ -345,17 +372,17 @@ def store():
         # Read each attestation, store in global state.
         # Use each ASA IDs  passed in call.
 
-        op_pool.maximize_budget( (Int(500) * num_attestations.load()) - Int(1)),
+        op_pool.maximize_budget( (Int(1300) * num_attestations.load()) - Int(1)),
 
         For(i.store(Int(0)), i.load() < num_attestations.load(), i.store(i.load() + Int(1))).Do(
             Seq([
                 attestation_data.store(Extract(pyth_payload.load(), PYTH_BEGIN_PAYLOAD_OFFSET + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
-                asa_id.store(Btoi(Extract(ASAID_SLOT_ARRAY, i.load() * ASAID_SLOT_TUPLE_SIZE, UINT64_SIZE))),
+                asa_id.store(ExtractUint64(ASAID_SLOT_ARRAY, i.load() * ASAID_SLOT_TUPLE_SIZE)),
 
                 # Ensure status == 1
                 
                 If(Extract(attestation_data.load(), BLOCK1_STATUS_OFFSET, BLOCK1_STATUS_LEN) != Bytes("base16", "0x01"),
-                    Log(Concat(Bytes("PC_IGNORED_PRICE_INVALID_STATUS "), Itob(asa_id.load()))),
+                    Log(Concat(Bytes("PRICE_DISABLED:"), Itob(asa_id.load()))),
 
                     Seq([
                         slot.store(Btoi(Extract(ASAID_SLOT_ARRAY, i.load() * ASAID_SLOT_TUPLE_SIZE + UINT64_SIZE, Int(1)))),
@@ -363,8 +390,8 @@ def store():
                         # Ignore this attestation of no ASA ID available.
                         If(asa_id.load() == IGNORE_ATTESTATION, Continue()),
 
-                        # Slot number must be valid
-                        XAssert(slot.load() < Int(MAX_SLOTS)),
+                        # Slot must be allocated already for this ASA
+                        XAssert(ExtractUint64(read_slot(slot.load()), Int(0)) == asa_id.load()),
 
                         # TODO: If an attestation has an older timestamp must be ignored.
 
@@ -376,6 +403,33 @@ def store():
         ),
         Approve()])
 
+def alloc_new_slot():
+    #
+    # Allocates a new slot for a particular ASA.
+    # Argument 1 must be ASA identifier.
+    #
+    entryCount = ScratchVar(TealType.uint64)
+    return Seq([
+        XAssert(is_creator()),
+        entryCount.store(get_entry_count()),
+        XAssert(entryCount.load() <= Int(MAX_PRICE_SLOTS)),
+        inc_entry_count(entryCount.load()),
+        write_slot(entryCount.load(), Replace(FREE_ENTRY, Int(0), ALLOC_ASA_ID)),
+        Log(Concat(Bytes("ALLOC@"), Itob(entryCount.load()))),
+        Approve()
+    ])
+
+def reset(): 
+    #
+    # Resets all contract info to zero
+    #
+    op_pool = OpPool()
+    return Seq([
+        XAssert(is_creator()),
+        op_pool.maximize_budget(Int(1000)),
+        GlobalBlob.zero(),
+        Approve()
+    ])
 
 def pricecaster_program():
     handle_create = Return(bootstrap())
@@ -384,6 +438,8 @@ def pricecaster_program():
     handle_optin = Return(Int(1))
     handle_noop = Cond(
         [METHOD == Bytes("store"), store()],
+        [METHOD == Bytes("alloc"), alloc_new_slot()],
+        [METHOD == Bytes("reset"), reset()],
     )
     return Seq([
         # XAssert(Txn.rekey_to() == Global.zero_address()),

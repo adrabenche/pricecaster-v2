@@ -1,7 +1,7 @@
 /**
  * Pricecaster Service.
  *
- * VAA Cache Implementation
+ * Statistics module class.
  *
  * Copyright 2022 Randlabs Inc.
  *
@@ -18,25 +18,43 @@
  * limitations under the License.
  */
 
-import { PriceId } from '../common/basetypes'
-import { IVaaCache } from './IVaaCache'
+type TxStats = {
+  error: number,
+  success: number,
+  avgCycleTime: number
+  fees: number,
+  cost: number,
+}
 
-export class VaaCache implements IVaaCache {
-  private vaaMap: Map<PriceId, Uint8Array>
-
+export class Statistics {
+  private txStats: TxStats
   constructor () {
-    this.vaaMap = new Map<PriceId, Uint8Array>()
-  }
-
-  store (vaa: Uint8Array, priceid: PriceId): void {
-    this.vaaMap.set(priceid, vaa)
-  }
-
-  fetch (priceid: PriceId): Uint8Array {
-    const vaa = this.vaaMap.get(priceid)
-    if (!vaa) {
-      throw new Error('There is no Vaa cached for such PriceId')
+    this.txStats = {
+      error: 0,
+      success: 0,
+      avgCycleTime: 0,
+      fees: 0,
+      cost: 0
     }
-    return vaa
+  }
+
+  increaseSuccessTxCount () {
+    this.txStats.success++
+  }
+
+  increaseFailedTxCount () {
+    this.txStats.error++
+  }
+
+  getSuccessTxCount (): number {
+    return this.txStats.success
+  }
+
+  getFailedTxCount (): number {
+    return this.txStats.error
+  }
+
+  getAvgCycleTime (): number {
+    return this.getAvgCycleTime()
   }
 }

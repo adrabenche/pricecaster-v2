@@ -27,7 +27,8 @@
 	"include": [
 		"backend/**/*.ts",
 		"lib/**/*.ts",
-		"tools/**/*.ts"
+		"tools/**/*.ts",
+		"settings/**/*.ts"
 	],
 	"exclude": [
 		"dist",
