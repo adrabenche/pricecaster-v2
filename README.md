@@ -1,7 +1,7 @@
 
-# Pricecaster Service V2
+# Pricecaster Service
 
-**Version 6.6.0**
+**Version 7.0.0**
 
 - [Pricecaster Service V2](#pricecaster-service-v2)
   * [Introduction](#introduction)
@@ -29,7 +29,7 @@
 
 This service comprises on-chain and off-chain components and tools. The purpose is to consume prices from "price fetchers" and feeds blockchain publishers. 
 
-The current implementation is a Wormhole client that uses the JS SDK to get VAAs from Pyth network and feed the payload and cryptographic verification data to a transaction group for validation. Subsequently, the data is optionally processed and stored, either price or metrics. For details regarding Wormhole VAAs see design documents: 
+The current implementation is a Pyth Price Service client that is used to get VAAs from Pyth network and feed the payload and cryptographic verification data to a transaction group for validation. Subsequently, the data is processed and stored in the Pricecaster app contract, which is deployed on the Algorand blockchain. For details regarding Wormhole VAAs see design documents: 
 
   https://github.com/certusone/wormhole/tree/dev.v2/whitepapers
 
@@ -41,67 +41,56 @@ The current implementation is a Wormhole client that uses the JS SDK to get VAAs
 
 The verification of each received VAA is done by the tandem of Wormhole SDK plus core Wormhole contracts deployed in Algorand chain. Refer to https://github.com/certusone/wormhole/tree/dev.v2/algorand for the Wormhole Token and Core Bridge components, and to https://github.com/certusone/wormhole/tree/dev.v2/sdk for the JS SDK.
 
+The backend will currently **call the Pricecaster contract to store data** as the last TX group. See below for details on how Pricecaster works.
 
-The backend will currently **call the Pricekeeper V2 contract to store data** as the last TX group. See below for details on how Pricekeeper works.
+## Pricecaster Onchain App Storage
 
-### VAA Structure
+The Pricecaster Smart Contract mantains a global space of storage with a layout of logical slots that are sequentially added as required. The global space key/value entries are stored as follows:
 
-VAA structure is defined in: 
- https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0001_generic_message_passing.md
+| key | value |
+|-----|-------|
+| coreid | The Wormhole Core application id to validate VAAs |
+| 0x00   | Linear space, bytes 0..127 |
+| 0x01   | Linear space, bytes 128..255 |
+| 0x02   | Linear space, bytes 256..383 |
+| .    | .                          |
+| .    | .                          |
+| .    | .                          |
+| 0x3e | Linear space, bytes 7874..8001   |
 
- Governance VAAs:
- https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0002_governance_messaging.md
+The linear space offers up to 8kB, each slot is 92 bytes wide (see format further below); so 86 slots are available. Actually 85 slots are available to store price information, as the slot with index 85 is the **system slot** which is used for internal data' bookkeeping. So the entire linear space is logically divided as:
 
- Sample Ethereum Struct Reference: 
- https://github.com/certusone/wormhole/blob/dev.v2/ethereum/contracts/Structs.sol
+| Slot 0 | Slot 1 | ... | Slot 84 | System Slot |
 
-```
- VAA
- i Bytes        Field   
- 0 1            Version
- 1 4            GuardianSetIndex
- 5 1            LenSignatures (LN)
- 6 66*LN        Signatures where each S = { guardianIndex (1),r(32),s(32),v(1) }
- -------------------------------------< hashed/signed body starts here.
- 4            timestamp
- 4            Nonce
- 2            emitterChainId
- 32           emitterAddress
- 8            sequence
- 1            consistencyLevel
- N            payload
- --------------------------------------< hashed/signed body ends here.
-```
-## Pricecaster Onchain App
+### System Slot
 
-The Pricecaster App mantains a record of product/asset symbols (e.g ALGO/USD, BTC/USDT) indexed by keys of ASA IDs and a byte array encoding price and metrics information. As the original Pyth Payload is 150-bytes long and it wouldn't fit in the value field for each key, the Pricecaster contract converts on-the-fly the payload to a more compact form, discarding unneeded information.
+The system slot has the following organization:
 
-The Pricecaster App stores the following stateful information:
+| Field | Explanation | Size (bytes) |
+|-------|-------------|--------------|
+| Entry count | The number of allocated slots | 1 |
+| Reserved |  Reserved for future use | 91 |
 
-* `coreId`:  The accepted Wormhole Core application Id.
+### Price slots
 
-The Pricecaster app will allow storage to succeed only if the transaction group contains:
-
-* Sender is the contract creator.
-* Calls/optins issued with authorized appId (Wormhole Core).
-* Calls/optins issued for the Pricecaster appid.
-* Payment transfers for upfront fees from owner.
-* There must be at least one app call to Wormhole Core Id.
-
-Consumers must interpret the stored bytes as fields organized as:
+Price slots have the following format:
 
 | Field         | Explanation | Size (bytes) |
 |---------------|-------------|--------------|
-| Price         | The price as integer.  Use the `exponent` field as `price` * 10^`exponent` to obtain decimal value. | 8            |
+| ASA ID        | The Algorand Standard Asset (ASA) identifier for this price | 8 |
 | Norm_Price    | The C3-Normalized price. See details below. | 8            |
+| Price         | The price as integer.  Use the `exponent` field as `price` * 10^`exponent` to obtain decimal value. | 8            |
 | Confidence    | The confidence (standard deviation) of the price | 8            |
 | Exponent      | The exponent to convert integer to decimal values | 4            | 
 | Price EMA     | The exponential-median-average (EMA) of the price field over a 30-day period | 8 | 
 | Confidence EMA| The exponential-median-average (EMA) of the confidence field over a 30-day period | 8 | 
-| Status        | 1 if this is a valid publication | 1 |
-| Timestamp     | The timestamp when Pyth stored this in Solana network | 8 |
-| OriginalKey   | The original Price/Product key pair of this product in the Pyth Network | 64 | 
+| Attestation Time | The timestamp of the moment the VAA was attested by the Wormhole network  | 8 |
+| Publish Time | The timestamp of the moment the price was published in the Pyth Network | 8 |
+| Prev Publish Time | The previous known Publish Time for this asset | 8 |
+| Prev Price | The previous known price for this asset | 8 | 
+| Prev Confidence | The previous known confidence ratio for this asset | 8 |
 
+A slot is allocated using the **alloc** app call. A slot allocation operation sets the ASA ID for which prices will be stored in the slot. Also this extends the number of valid slots by 1,  increasing the _entry count_ field in the **System Slot**.
 
 ### Price storage formats
 
@@ -123,6 +112,30 @@ With this in mind, the normalized price format will yield the following values w
 |19 |12 | p' = p*10^5 |
 |0  |0  | p' = p*10^12|
 |19 |0  | p' = 0| 
+
+### Reset operation
+
+The linear space can be zeroed, thus deallocating all slots and resetting the entry count to 0, by calling the privileged operation **reset**.
+
+
+
+The Pricecaster App mantains a record of product/asset symbols (e.g ALGO/USD, BTC/USDT) indexed by keys of ASA IDs and a byte array encoding price and metrics information. As the original Pyth Payload is 150-bytes long and it wouldn't fit in the value field for each key, the Pricecaster contract converts on-the-fly the payload to a more compact form, discarding unneeded information.
+
+The Pricecaster App stores the following stateful information:
+
+* `coreId`:  The accepted Wormhole Core application Id.
+
+The Pricecaster app will allow storage to succeed only if the transaction group contains:
+
+* Sender is the contract creator.
+* Calls/optins issued with authorized appId (Wormhole Core).
+* Calls/optins issued for the Pricecaster appid.
+* Payment transfers for upfront fees from owner.
+* There must be at least one app call to Wormhole Core Id.
+
+Consumers must interpret the stored bytes as fields organized as:
+
+
 
 
 
@@ -367,6 +380,35 @@ Refer to the `pricecaster-sdk` repository.
 
 This means that this account has not enough balance to pay the fees for the  TX group.  
 
+### VAA Structure
+
+VAA structure is defined in: 
+ https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0001_generic_message_passing.md
+
+ Governance VAAs:
+ https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0002_governance_messaging.md
+
+ Sample Ethereum Struct Reference: 
+ https://github.com/certusone/wormhole/blob/dev.v2/ethereum/contracts/Structs.sol
+
+```
+ VAA
+ i Bytes        Field   
+ 0 1            Version
+ 1 4            GuardianSetIndex
+ 5 1            LenSignatures (LN)
+ 6 66*LN        Signatures where each S = { guardianIndex (1),r(32),s(32),v(1) }
+ -------------------------------------< hashed/signed body starts here.
+ 4            timestamp
+ 4            Nonce
+ 2            emitterChainId
+ 32           emitterAddress
+ 8            sequence
+ 1            consistencyLevel
+ N            payload
+ --------------------------------------< hashed/signed body ends here.
+```
+
 ### Sample Pyth VAA payload
 
 See the documentation `doc` subdirectory for format information.
@@ -408,6 +450,7 @@ fffffff8                                                            exponent
 
 ```
 
+## License
 
 
 
