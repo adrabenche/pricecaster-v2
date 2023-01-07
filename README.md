@@ -2,26 +2,33 @@
 # Pricecaster Service
 
 **Version 7.0.0**
-
-- [Pricecaster Service V2](#pricecaster-service-v2)
+- [Pricecaster Service](#pricecaster-service)
   * [Introduction](#introduction)
   * [System Overview](#system-overview)
     + [Wormhole Core Contracts](#wormhole-core-contracts)
-    + [VAA Structure](#vaa-structure)
-  * [Pricecaster Onchain App](#pricecaster-onchain-app)
+  * [Prerequisites](#prerequisites)
+  * [Pricecaster Onchain App Storage](#pricecaster-onchain-app-storage)
+    + [System Slot](#system-slot)
+    + [Price slots](#price-slots)
     + [Price storage formats](#price-storage-formats)
     + [Exponent and Decimal Ranges](#exponent-and-decimal-ranges)
+    + [Store operation](#store-operation)
+    + [Reset operation](#reset-operation)
   * [Installation](#installation)
   * [Deployment of Applications](#deployment-of-applications)
   * [Backend Configuration](#backend-configuration)
     + [Diagnosing failed transactions](#diagnosing-failed-transactions)
-  * [Running the system](#running-the-system)
+  * [Backend operation](#backend-operation)
+    + [The Slot Layout database](#the-slot-layout-database)
+    + [Main Loop](#main-loop)
   * [Tests](#tests)
-  * [Guardian Spy Setup](#guardian-spy-setup)
   * [Pricecaster SDK](#pricecaster-sdk)
+  * [Additional tools](#additional-tools)
   * [Appendix](#appendix)
     + [Common errors](#common-errors)
+    + [VAA Structure](#vaa-structure)
     + [Sample Pyth VAA payload](#sample-pyth-vaa-payload)
+  * [License](#license)
 
 <small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
 
