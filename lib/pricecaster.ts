@@ -639,6 +639,10 @@ export default class PricecasterLib {
       throw new Error('Cannot parse system slot with this call')
     }
     const dataBuf = await this.readSlot(slot)
+    return this.parseSlotBuffer(dataBuf)
+  }
+
+  parseSlotBuffer (dataBuf: Buffer): PriceSlotData {
     const asaId = dataBuf.subarray(0, 8).readBigInt64BE()
     const normalizedPrice = dataBuf.subarray(8, 16).readBigUint64BE()
     const pythPrice = dataBuf.subarray(16, 24).readBigUint64BE()
@@ -665,5 +669,17 @@ export default class PricecasterLib {
       prevPrice,
       prevConf
     }
+  }
+
+  /**
+   * Fetch the global state and parse all price information
+   */
+  async readParseGlobalState (): Promise<PriceSlotData[]> {
+    const globalSpace = await this.fetchGlobalSpace()
+    const psArray = []
+    for (let i = 0; i < 85; ++i) {
+      psArray.push(this.parseSlotBuffer(globalSpace.subarray(GLOBAL_SLOT_SIZE * i, GLOBAL_SLOT_SIZE * (i + 1))))
+    }
+    return psArray
   }
 }

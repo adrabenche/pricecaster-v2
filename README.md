@@ -272,7 +272,68 @@ goal clerk dryrun-remote -D dump.dr -v
 
 ## Backend operation 
 
-Check the `package.json` file for `npm run start-xxx`  automated commands. 
+### The Slot Layout database
+
+To know which price-identifiers to retrieve from the Pyth Network a local database is used containing tuples of `(slot, asaid, priceid)` where the `slot` and `asaid` fields in each row must be consistent with the on-chain slots. For example, if slot `4` is allocated to store ASA ID `15000` on chain, this must be reflected on the database. Typically, for a running production Pricecaster system the existent slots will be fairly stable.
+
+For development and initial production runs, preset slots can be bootstrapped using the `settings/bootSlotLayout.ts`  file. The file defines an array of slots with ASA ID and Pyth Price Ids; slots are allocated sequentially with the command: 
+
+```
+npm run bootstrap
+```
+
+:warn: This command will zero the onchain contract pointed by the `pricecasterAppId` setting!  
+
+After zeroing the contract, each slot will be assigned with the ASA ID specified.  Keep in mind that Pyth Price Ids must be mantained locally by the backend, as Pyth price ids are "chain agnostic". 
+
+This is a typical output of a bootstrapping process:
+
+```
+Pricecaster Service Backend  Version 7.0.0 -- Copyright (c) 2022, 23 Randlabs Inc.
+
+[2023-01-07 12:40:57] [INFO] - Loaded settings. 
+[2023-01-07 12:40:57] [INFO] - Using network: testnet
+[2023-01-07 12:40:57] [INFO] - Algorand Client: API: Port: 8002
+[2023-01-07 12:40:57] [INFO] - Wormhole Appids: Core 86525623  Bridge 86525641 
+[2023-01-07 12:40:57] [INFO] - Pricecaster Appid: 152524708
+[2023-01-07 12:40:57] [INFO] - Database full path ./db/pricecaster.dbt
+[2023-01-07 12:40:57] [WARN] - Bootstrapping process starting
+[2023-01-07 12:40:57] [INFO] - Dropping SlotLayout table
+[2023-01-07 12:40:57] [INFO] - Executed. Info: {"changes":0,"lastInsertRowid":0}
+[2023-01-07 12:40:57] [INFO] - Creating new SlotLayout table
+[2023-01-07 12:40:57] [INFO] - Executed. Info: {"changes":0,"lastInsertRowid":0}
+[2023-01-07 12:40:57] [WARN] - Resetting contract.
+[2023-01-07 12:41:03] [WARN] - Contract zeroed.
+[2023-01-07 12:41:03] [INFO] - Bootstrapped slot layout
+[2023-01-07 12:41:11] [INFO] - Added slot 0 for ASA ID: 0, PriceId: 08f781a893bc9340140c5f89c8a96f438bcfae4d1474cc0f688e3a52892c7318
+[2023-01-07 12:41:18] [INFO] - Added slot 1 for ASA ID: 122146368, PriceId: ca80ba6dc32e08d06f1aa886011eed1d77c77be9eb761cc10d72b7d0a2fd57a6
+[2023-01-07 12:41:25] [INFO] - Added slot 2 for ASA ID: 113638050, PriceId: 41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722
+[2023-01-07 12:41:32] [INFO] - Added slot 3 for ASA ID: 105300796, PriceId: d7566a3ba7f7286ed54f4ae7e983f4420ae0b1e0f3892e11f9c4ab107bbad7b9
+[2023-01-07 12:41:40] [INFO] - Added slot 4 for ASA ID: 52771911, PriceId: d2c2c1f2bba8e0964f9589e060c2ee97f5e19057267ac3284caef3bd50bd2cb5
+[2023-01-07 12:41:47] [INFO] - Added slot 5 for ASA ID: 100702091, PriceId: ecf553770d9b10965f8fb64771e93f5690a182edc32be4a3236e0caaa6e0581a
+[2023-01-07 12:41:47] [INFO] - Pre-flight consistency check running
+[2023-01-07 12:41:48] [INFO] - Pricecaster onchain entry count: 6, database count: 6
+[2023-01-07 12:41:49] [INFO] - Pricecaster slot 0 ASA: 0, database 0
+[2023-01-07 12:41:50] [INFO] - Pricecaster slot 1 ASA: 122146368, database 122146368
+[2023-01-07 12:41:51] [INFO] - Pricecaster slot 2 ASA: 113638050, database 113638050
+[2023-01-07 12:41:52] [INFO] - Pricecaster slot 3 ASA: 105300796, database 105300796
+[2023-01-07 12:41:53] [INFO] - Pricecaster slot 4 ASA: 52771911, database 52771911
+[2023-01-07 12:41:54] [INFO] - Pricecaster slot 5 ASA: 100702091, database 100702091
+[2023-01-07 12:41:54] [INFO] - Good, Pricecaster onchain and database slot layouts consistent.
+[2023-01-07 12:41:54] [INFO] - Bailing out, bye
+hernandp@thinkpadmx:~/src/pricecaster-v2
+```
+
+If you want to clear the contract, or the database independently use `RESETDB=1` or `RESETCONTRACT=1` environment variables.
+
+### Main Loop
+
+The Pricecaster backend will run in a continuous loop to:
+
+* Fetch one or more VAAs containing products prices according to the Slot Layout.  A VAA typically contains 5 attestations of prices, which may contain one or more of the specified prices. This means that if we ask for five prices they may be contained in one VAA payload, or to be distributed in five VAAs.  
+* Build a transaction group using the Wormhole SDK to verify the VAA and call the **store** application call.
+* Store statistics for monitoring operation.
+
 
 ## Tests
 
@@ -293,7 +354,10 @@ Refer to the `pricecaster-sdk` repository.
 
 ## Additional tools
 
+The following tools are available to help development:
 
+* `tools/dump-priceids.ts`:  Execute with `npx ts-node`  to dump all available products/assets available in Pyth with it's corresponding Price Id. The default behavior is to dump `devnet` prices, change to `mainnet-beta` if you want.
+* `tools/pcasmon.ts`: Tool to monitor the Pricecaster onchain contents. Execute it with the `appId` and `network` options.
 
 ## Appendix
 
@@ -375,6 +439,18 @@ fffffff8                                                            exponent
 
 ## License
 
+Copyright 2022, 2023 Randlabs Inc. 
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 
