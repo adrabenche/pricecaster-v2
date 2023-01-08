@@ -28,7 +28,7 @@ import algosdk, { Algodv2 } from 'algosdk'
 import { IPublisher } from '../publisher/IPublisher'
 import { Statistics } from './Stats'
 import { SlotLayout } from '../common/slotLayout'
-import { bootstrapSlotLayoutInfo } from '../../settings/bootSlotLayout'
+import { RestApi } from './RestApi'
 const fs = require('fs')
 
 export class WormholeClientEngine implements IEngine {
@@ -38,6 +38,8 @@ export class WormholeClientEngine implements IEngine {
   private settings: IAppSettings
   private slotLayout!: SlotLayout
   private shouldQuit: boolean
+  private restApi!: RestApi
+
   constructor (settings: IAppSettings) {
     this.settings = settings
     this.shouldQuit = false
@@ -50,6 +52,7 @@ export class WormholeClientEngine implements IEngine {
       this.publisher.stop()
       this.fetcher.shutdown()
       await Logger.finalize()
+      this.restApi.stop()
     }
   }
 
@@ -78,7 +81,11 @@ export class WormholeClientEngine implements IEngine {
     }
 
     Logger.info('Starting statistics module...')
-    this.stats = new Statistics()
+    this.stats = new Statistics(this.settings)
+
+    Logger.info('Starting Rest API module...')
+    this.restApi = new RestApi(this.settings, this.slotLayout, this.stats)
+    await this.restApi.init()
 
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')
