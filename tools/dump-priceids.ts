@@ -1,5 +1,6 @@
-import { parseProductData, PythConnection } from '@pythnetwork/client'
+import { parseProductData } from '@pythnetwork/client'
 import { Cluster, clusterApiUrl, Connection, PublicKey } from '@solana/web3.js'
+const columnify = require('columnify')
 
 /** Mapping from solana clusters to the public key of the pyth program. */
 const clusterToPythProgramKey: Record<Cluster, string> = {
@@ -27,10 +28,19 @@ export function getPythProgramKeyForCluster (cluster: Cluster): PublicKey {
   const pythPublicKey = getPythProgramKeyForCluster(SOLANA_CLUSTER_NAME)
   const accounts = await connection.getProgramAccounts(pythPublicKey, 'finalized')
 
+  type PriceEntry = {
+    symbol: string,
+    priceId: string
+  }
+
+  const priceEntryData: PriceEntry[] = []
+
   for (const acc of accounts) {
     const productData = parseProductData(acc.account.data)
-    if (productData.type === 2) {
-      console.log(`prod: 0x${Buffer.from(acc.pubkey.toBytes()).toString('hex')} price: 0x${Buffer.from(productData.priceAccountKey.toBytes()).toString('hex')} ${productData.product.symbol}`)
+    if (productData.type === 2 && productData.product.symbol) {
+      priceEntryData.push({ symbol: productData.product.symbol, priceId: Buffer.from(productData.priceAccountKey.toBytes()).toString('hex')})
     }
   }
+
+  console.log(columnify(priceEntryData.sort( (a, b) => a.symbol > b.symbol ? 1 : -1)))
 })()

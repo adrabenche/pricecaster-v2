@@ -60,7 +60,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   console.log(out.output.toString())
 
   console.log('Deploying Pricecaster V2 Application...')
-  const txId = await pclib.createPricecasterApp(fromAddress, parseInt(coreId), false, signCallback)
+  const txId = await pclib.createPricecasterApp(fromAddress, parseInt(coreId), false, signCallback, 2000)
   console.log('txId: ' + txId)
   const txResponse = await pclib.waitForTransactionResponse(txId)
   const pkAppId = pclib.appIdFromCreateAppResponse(txResponse)
@@ -75,7 +75,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
 }
 
 (async () => {
-  console.log('\nPricecaster v2   Version 5.0  Apps Deployment Tool')
+  console.log('\nPricecaster v2   Version 7.0  Apps Deployment Tool')
   console.log('Copyright 2022 Randlabs Inc.\n')
 
   if (process.argv.length !== 5) {
@@ -98,7 +98,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   }
 
   try {
-    globalMnemo = fs.readFileSync(keyfile).toString()
+    globalMnemo = fs.readFileSync(keyfile).toString().trim()
     const algodClient = new algosdk.Algodv2(netconfig.token, netconfig.api, netconfig.port)
     const fromAddress = algosdk.mnemonicToSecretKey(globalMnemo).addr
 

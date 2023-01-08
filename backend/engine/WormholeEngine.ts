@@ -19,23 +19,24 @@
  */
 
 import { IEngine } from './IEngine'
-import { getPythFilter, getWormholeCoreAppId, IAppSettings } from '../common/settings'
-import { WormholePythPriceFetcher } from '../fetcher/WormholePythPriceFetcher'
-import { PricecasterPublisher } from '../publisher/Pricekeeper2Publisher'
+import { IAppSettings } from '../common/settings'
+import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
+import { PricecasterPublisher as C3Publisher } from '../publisher/C3Publisher'
 import * as Logger from '@randlabs/js-logger'
-import { PythSymbolInfo } from './SymbolInfo'
-import { Pyth2AsaMapper } from '../mapper/Pyth2AsaMapper'
 import { NullPublisher } from '../publisher/NullPublisher'
-import { Algodv2 } from 'algosdk'
-import { IPublisher } from 'backend/publisher/IPublisher'
-import { IPriceFetcher } from 'backend/fetcher/IPriceFetcher'
+import algosdk, { Algodv2 } from 'algosdk'
+import { IPublisher } from '../publisher/IPublisher'
+import { Statistics } from './Stats'
+import { SlotLayout } from '../common/slotLayout'
+import { bootstrapSlotLayoutInfo } from '../../settings/bootSlotLayout'
 const fs = require('fs')
-const algosdk = require('algosdk')
 
 export class WormholeClientEngine implements IEngine {
+  private fetcher!: PythPriceServiceFetcher
   private publisher!: IPublisher
-  private fetcher!: IPriceFetcher
+  private stats!: Statistics
   private settings: IAppSettings
+  private slotLayout!: SlotLayout
   private shouldQuit: boolean
   constructor (settings: IAppSettings) {
     this.settings = settings
@@ -46,8 +47,8 @@ export class WormholeClientEngine implements IEngine {
     if (!this.shouldQuit) {
       this.shouldQuit = true
       Logger.warn('Received SIGINT')
-      this.fetcher.shutdown()
       this.publisher.stop()
+      this.fetcher.shutdown()
       await Logger.finalize()
     }
   }
@@ -57,44 +58,41 @@ export class WormholeClientEngine implements IEngine {
       await this.shutdown()
     })
 
-    let mnemo
+    const algodClient = new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port)
+    let ownerAccount: algosdk.Account
     try {
-      mnemo = fs.readFileSync(this.settings.apps.ownerKeyFile)
+      const mnemo = fs.readFileSync(this.settings.apps.ownerKeyFile)
+      ownerAccount = algosdk.mnemonicToSecretKey((mnemo.toString()).trim())
     } catch (e) {
-      throw new Error('❌ Cannot read account key file: ' + e)
+      throw new Error('❌ Cannot get owner address: ' + e)
     }
 
-    const NetworkToCluster = (network: 'testnet' | 'mainnet') => { return network === 'mainnet' ? 'mainnet-beta' : 'testnet' }
-    Logger.info(`Gathering prices from Pyth network ${NetworkToCluster(this.settings.network)}...`)
-    const symbolInfo = new PythSymbolInfo(NetworkToCluster(this.settings.network))
-    await symbolInfo.load()
-    Logger.info(`Loaded ${symbolInfo.getSymbolCount()} product(s)`)
+    this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings)
 
-    const mapper = new Pyth2AsaMapper(this.settings.network)
+    const initResult = await this.slotLayout.init()
+
+    // When bootstrapping, bail out
+    if (!initResult || process.env.BOOTSTRAPDB === '1') {
+      Logger.info('Bailing out, bye')
+      process.exit(0)
+    }
+
+    Logger.info('Starting statistics module...')
+    this.stats = new Statistics()
 
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')
       this.publisher = new NullPublisher()
     } else {
-      this.publisher = new PricecasterPublisher(BigInt(getWormholeCoreAppId(this.settings)),
-        this.settings.apps.pricecasterAppId,
-        algosdk.mnemonicToSecretKey(mnemo.toString()),
-        new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port),
-        this.settings.algo.dumpFailedTx,
-        this.settings.algo.dumpFailedTxDirectory
-      )
+      this.publisher = new C3Publisher(algodClient, ownerAccount, this.stats, this.settings, this.slotLayout)
     }
-    this.fetcher = new WormholePythPriceFetcher(
-      getPythFilter(this.settings),
-      this.settings.wormhole.spyServiceHost,
-      symbolInfo,
-      mapper,
-      this.publisher)
+    this.fetcher = new PythPriceServiceFetcher(this.settings, this.stats, this.slotLayout)
 
     Logger.info('Waiting for publisher to boot...')
     this.publisher.start()
 
     Logger.info('Waiting for fetcher to boot...')
+    this.fetcher.setDataReadyCallback(this.publisher.publish.bind(this.publisher))
     this.fetcher.start()
 
     Logger.info('Ready.')

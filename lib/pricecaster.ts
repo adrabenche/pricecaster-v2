@@ -19,6 +19,7 @@
  */
 
 import algosdk from 'algosdk'
+import _ from 'underscore'
 // eslint-disable-next-line camelcase
 import tools from '../tools/app-tools'
 const fs = require('fs')
@@ -84,6 +85,28 @@ export const MAPPER_CI: ContractInfo = {
   },
   appId: 0
 }
+
+export type PriceSlotData = {
+  asaId: number,
+  normalizedPrice: bigint,
+  pythPrice: bigint,
+  confidence: bigint,
+  exponent: number,
+  priceEMA: bigint,
+  confEMA: bigint,
+  attTime: bigint,
+  pubTime: bigint,
+  prevPubTime: bigint,
+  prevPrice: bigint,
+  prevConf: bigint
+}
+
+export type AsaIdSlot = { asaid: number, slot: number }
+export type SystemSlotInfo = { entryCount: number }
+
+const GLOBAL_SLOT_SIZE = 92
+const SYSTEM_SLOT_INDEX = 85
+const NUM_SLOTS = 86
 
 // --------------------------------------------------------------------------------------
 type SignCallback = (arg0: string, arg1: algosdk.Transaction) => any
@@ -234,8 +257,8 @@ export default class PricecasterLib {
      * @return {String/Number} it returns the value associated to the key that could be an address,
      * a number or a base64 string containing a ByteArray
      */
-  async readGlobalStateByKey (key: string, pcci: ContractInfo): Promise<any> {
-    return tools.readAppGlobalStateByKey(this.algodClient, pcci.appId, this.ownerAddr, key)
+  async readGlobalStateByKey (key: string, pcci: ContractInfo, disableParseAddress?: boolean): Promise<any> {
+    return tools.readAppGlobalStateByKey(this.algodClient, pcci.appId, this.ownerAddr, key, disableParseAddress)
   }
 
   /**
@@ -299,12 +322,13 @@ export default class PricecasterLib {
     appArgs: Uint8Array[],
     signCallback: SignCallback,
     tmplReplace: [string, string][] = [],
-    skipCompile?: any): Promise<string> {
+    skipCompile?: any,
+    fee?: number): Promise<string> {
     const onComplete = algosdk.OnApplicationComplete.NoOpOC
 
     // get node suggested parameters
     const params = await this.algodClient.getTransactionParams().do()
-    params.fee = this.minFee
+    params.fee = fee ?? this.minFee
     params.flatFee = true
 
     if (!skipCompile) {
@@ -335,12 +359,13 @@ export default class PricecasterLib {
   /**
        * Create the Pricekeeper application based on the default approval and clearState programs or based on the specified files.
        * @param  {String} sender account used to sign the createApp transaction
-       * @param  {String} wormholeCoreAppId The application id of the Wormhole Core program associated.
+       * @param  {String} wormholeCore The application id of the Wormhole Core program associated.
+       * @param  {boolean} testMode Set to true to enable test mode (ignore transaction format check)
        * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
        * @return {String} transaction id of the created application
        */
-  async createPricecasterApp (sender: string, wormholeCore: number, testMode: boolean, signCallback: SignCallback): Promise<any> {
-    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback, [['TMPL_I_TESTING', testMode ? '1' : '0']])
+  async createPricecasterApp (sender: string, wormholeCore: number, testMode: boolean, signCallback: SignCallback, fee?: number): Promise<any> {
+    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback, [['TMPL_I_TESTING', testMode ? '1' : '0']], undefined, fee)
   }
 
   /**
@@ -481,24 +506,41 @@ export default class PricecasterLib {
    *
    * Other transaction in group must provide for 2000 uALGO fee for maximizing computation budget.
    * @param {*} sender The sender account (typically the VAA verification stateless program)
-   * @param {*} assetIdsFlatArray The asset IDs contained in the attestations as a flat Uint8Array.
-   * @param {*} assetIds Array of asset ID numbers contained in the attestations.
+   * @param {*} asaIdSlots An array of objects of entries  (asaid, slot) for each attestation contained in the VAA to publish. A VAA
+   *                           may contain entries that we dont want to publish, in that case the asaid member must be set to -1  (0xffff ...)
+   *                           The slot will be used to store the price and must be mantained by caller.
    * @param {*} payload The VAA payload
+   * @param {*} suggestedParams  The network suggested params, get with algosdk getTransactionParams call.
    */
-  async makePriceStoreTx (sender: string, assetIdsFlatArray: Uint8Array, assetIds: number[], payload: Buffer, fee: number = 3000): Promise<algosdk.Transaction> {
+  makePriceStoreTx (sender: string, asaIdSlots: AsaIdSlot[], payload: Buffer, suggestedParams: algosdk.SuggestedParams): algosdk.Transaction {
+    const ASAID_SLOT_SIZE = 9
     const appArgs = []
-    const params = await this.algodClient.getTransactionParams().do()
-    params.fee = fee
-    params.flatFee = true
+    suggestedParams.flatFee = true
 
     if (this.dumpFailedTx) {
       console.warn(`Dump failed to ${this.dumpFailedTxDirectory} unimplemented`)
     }
 
-    appArgs.push(new Uint8Array(Buffer.from('store')), assetIdsFlatArray, new Uint8Array(payload))
+    // Pricecaster use the ASA IDs to query for decimals data onchain, so valid ASA IDs
+    // must be added to the foreign asset array
+
+    const assetIds: number[] = asaIdSlots.filter(v => v.asaid !== -1).map(v => v.asaid)
+    const encodedAsaIdSlots = new Uint8Array(ASAID_SLOT_SIZE * asaIdSlots.length)
+
+    const IGNORE_ASA = Buffer.from('FFFFFFFFFFFFFFFF', 'hex')
+
+    for (let i = 0; i < asaIdSlots.length; ++i) {
+      const buf = Buffer.concat([
+        (asaIdSlots[i].asaid !== -1) ? algosdk.encodeUint64(asaIdSlots[i].asaid) : IGNORE_ASA,
+        algosdk.encodeUint64(asaIdSlots[i].slot).slice(7)
+      ])
+      encodedAsaIdSlots.set(buf, i * ASAID_SLOT_SIZE)
+    }
+
+    appArgs.push(new Uint8Array(Buffer.from('store')), encodedAsaIdSlots, new Uint8Array(payload))
 
     const tx = algosdk.makeApplicationNoOpTxn(sender,
-      params,
+      suggestedParams,
       PRICECASTER_CI.appId,
       appArgs,
       undefined,
@@ -506,5 +548,138 @@ export default class PricecasterLib {
       assetIds)
 
     return tx
+  }
+
+  /**
+   * Allocates a new price slot.
+   *
+   * @param sender The sender account.
+   * @param asaid The ASA ID to be assigned to the new slot.
+   * @param suggestedParams  The transaction params.
+   * @returns
+   */
+  makeAllocSlotTx (sender: string, asaid: number, suggestedParams: algosdk.SuggestedParams): algosdk.Transaction {
+    const appArgs = []
+    appArgs.push(new Uint8Array(Buffer.from('alloc')), algosdk.encodeUint64(asaid))
+
+    const tx = algosdk.makeApplicationNoOpTxn(sender,
+      suggestedParams,
+      PRICECASTER_CI.appId,
+      appArgs)
+
+    return tx
+  }
+
+  /**
+   * Resets the contract to zero.
+   *
+   * @param sender The sender account.
+   * @param suggestedParams  The transaction params.
+   * @returns
+   */
+  makeResetTx (sender: string, suggestedParams: algosdk.SuggestedParams): algosdk.Transaction {
+    const appArgs = []
+    appArgs.push(new Uint8Array(Buffer.from('reset')))
+
+    const tx = algosdk.makeApplicationNoOpTxn(sender,
+      suggestedParams,
+      PRICECASTER_CI.appId,
+      appArgs)
+
+    return tx
+  }
+
+  /**
+   * Fetch the global store blob space
+   * @returns Buffer with the entire global store
+   */
+  async fetchGlobalSpace (): Promise<Buffer> {
+    const buf = Buffer.alloc(63 * 127)
+    const global: [] = await this.readGlobalState(PRICECASTER_CI)
+    const globalFiltered = global.filter((e: any) => { return e.key !== 'Y29yZWlk' }) // filter out 'coreid'
+    globalFiltered.forEach((e: any) => {
+      const offset = Buffer.from(e.key, 'base64').readUint8() * 127
+      buf.write(e.value.bytes, offset, 'base64')
+    })
+    return buf
+  }
+
+  /**
+   * Read a global space slot by index.
+   * @param slot The slot index
+   * @returns  The slot information in a buffer
+   */
+  async readSlot (slot: number): Promise<Buffer> {
+    const globalSpace = await this.fetchGlobalSpace()
+    return globalSpace.subarray(GLOBAL_SLOT_SIZE * slot, GLOBAL_SLOT_SIZE * slot + GLOBAL_SLOT_SIZE)
+  }
+
+  /**
+   * Read the Pricecaster contract system slot.
+   * @returns The system slot information
+   */
+  async readSystemSlot (): Promise<SystemSlotInfo> {
+    const sysSlotBuf = await this.readSlot(SYSTEM_SLOT_INDEX)
+    return {
+      entryCount: sysSlotBuf.readUInt8(0)
+    }
+  }
+
+  /**
+   * Read and parse a price slot.
+   * @param slot The slot number.
+   * @returns Parsed price data stored in the slot.
+   */
+
+  async readParsePriceSlot (slot: number): Promise<PriceSlotData> {
+    if (slot < 0 || slot > NUM_SLOTS) {
+      throw new Error('Invalid slot number')
+    }
+    if (slot === SYSTEM_SLOT_INDEX) {
+      throw new Error('Cannot parse system slot with this call')
+    }
+    const dataBuf = await this.readSlot(slot)
+    return this.parseSlotBuffer(dataBuf)
+  }
+
+  parseSlotBuffer (dataBuf: Buffer): PriceSlotData {
+    const asaId = dataBuf.subarray(0, 8).readBigInt64BE()
+    const normalizedPrice = dataBuf.subarray(8, 16).readBigUint64BE()
+    const pythPrice = dataBuf.subarray(16, 24).readBigUint64BE()
+    const confidence = dataBuf.subarray(24, 32).readBigUint64BE()
+    const exp = dataBuf.subarray(32, 36).readInt32BE()
+    const priceEMA = dataBuf.subarray(36, 44).readBigUint64BE()
+    const confEMA = dataBuf.subarray(44, 52).readBigUint64BE()
+    const attTime = dataBuf.subarray(52, 60).readBigUint64BE()
+    const pubTime = dataBuf.subarray(60, 68).readBigUint64BE()
+    const prevPubTime = dataBuf.subarray(68, 76).readBigUint64BE()
+    const prevPrice = dataBuf.subarray(76, 84).readBigUint64BE()
+    const prevConf = dataBuf.subarray(84, 92).readBigUInt64BE()
+    return {
+      asaId: parseInt(asaId.toString()),
+      pythPrice,
+      normalizedPrice,
+      confidence,
+      exponent: exp,
+      priceEMA,
+      confEMA,
+      attTime,
+      pubTime,
+      prevPubTime,
+      prevPrice,
+      prevConf
+    }
+  }
+
+  /**
+   * Fetch the global state and parse all price information
+   */
+  async readParseGlobalState (): Promise<PriceSlotData[]> {
+    const globalSpace = await this.fetchGlobalSpace()
+    const psArray = []
+    for (let i = 0; i < 85; ++i) {
+      psArray.push(this.parseSlotBuffer(globalSpace.subarray(GLOBAL_SLOT_SIZE * i, GLOBAL_SLOT_SIZE * (i + 1))))
+    }
+    return psArray
   }
 }

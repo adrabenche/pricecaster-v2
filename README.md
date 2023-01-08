@@ -1,27 +1,34 @@
 
-# Pricecaster Service V2
+# Pricecaster Service
 
-**Version 6.6.0**
-
-- [Pricecaster Service V2](#pricecaster-service-v2)
+**Version 7.0.0**
+- [Pricecaster Service](#pricecaster-service)
   * [Introduction](#introduction)
   * [System Overview](#system-overview)
     + [Wormhole Core Contracts](#wormhole-core-contracts)
-    + [VAA Structure](#vaa-structure)
-  * [Pricecaster Onchain App](#pricecaster-onchain-app)
+  * [Prerequisites](#prerequisites)
+  * [Pricecaster Onchain App Storage](#pricecaster-onchain-app-storage)
+    + [System Slot](#system-slot)
+    + [Price slots](#price-slots)
     + [Price storage formats](#price-storage-formats)
     + [Exponent and Decimal Ranges](#exponent-and-decimal-ranges)
+    + [Store operation](#store-operation)
+    + [Reset operation](#reset-operation)
   * [Installation](#installation)
   * [Deployment of Applications](#deployment-of-applications)
   * [Backend Configuration](#backend-configuration)
     + [Diagnosing failed transactions](#diagnosing-failed-transactions)
-  * [Running the system](#running-the-system)
+  * [Backend operation](#backend-operation)
+    + [The Slot Layout database](#the-slot-layout-database)
+    + [Main Loop](#main-loop)
   * [Tests](#tests)
-  * [Guardian Spy Setup](#guardian-spy-setup)
   * [Pricecaster SDK](#pricecaster-sdk)
+  * [Additional tools](#additional-tools)
   * [Appendix](#appendix)
     + [Common errors](#common-errors)
+    + [VAA Structure](#vaa-structure)
     + [Sample Pyth VAA payload](#sample-pyth-vaa-payload)
+  * [License](#license)
 
 <small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
 
@@ -29,7 +36,7 @@
 
 This service comprises on-chain and off-chain components and tools. The purpose is to consume prices from "price fetchers" and feeds blockchain publishers. 
 
-The current implementation is a Wormhole client that uses the JS SDK to get VAAs from Pyth network and feed the payload and cryptographic verification data to a transaction group for validation. Subsequently, the data is optionally processed and stored, either price or metrics. For details regarding Wormhole VAAs see design documents: 
+The current implementation is a Pyth Price Service client that is used to get VAAs from Pyth network and feed the payload and cryptographic verification data to a transaction group for validation. Subsequently, the data is processed and stored in the Pricecaster app contract, which is deployed on the Algorand blockchain. For details regarding Wormhole VAAs see design documents: 
 
   https://github.com/certusone/wormhole/tree/dev.v2/whitepapers
 
@@ -41,67 +48,82 @@ The current implementation is a Wormhole client that uses the JS SDK to get VAAs
 
 The verification of each received VAA is done by the tandem of Wormhole SDK plus core Wormhole contracts deployed in Algorand chain. Refer to https://github.com/certusone/wormhole/tree/dev.v2/algorand for the Wormhole Token and Core Bridge components, and to https://github.com/certusone/wormhole/tree/dev.v2/sdk for the JS SDK.
 
+The backend will currently **call the Pricecaster contract to store data** as the last TX group. See below for details on how Pricecaster works.
 
-The backend will currently **call the Pricekeeper V2 contract to store data** as the last TX group. See below for details on how Pricekeeper works.
+## Prerequisites
 
-### VAA Structure
+The pricecaster system requires the following components to run:
 
-VAA structure is defined in: 
- https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0001_generic_message_passing.md
+* Algorand node.
+* **Pyth Price Service**. Pyth network offers two public endpoints: ```https://xc-testnet.pyth.network``` and ```https://xc-mainnet.pyth.network```.  This is enough for development and non-production deployments; for production Pyth recommends a dedicated installation. See https://github.com/pyth-network/pyth-crosschain/tree/main/third_party/pyth/price-service.  Note that a dedicated installation **also requires a Wormhole spy deployment**. 
 
- Governance VAAs:
- https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0002_governance_messaging.md
+* Deployed Wormhole contracts 
 
- Sample Ethereum Struct Reference: 
- https://github.com/certusone/wormhole/blob/dev.v2/ethereum/contracts/Structs.sol
+For local development the recommendation is to use **Tilt** to run: an Algorand sandbox with deployed Wormhole contracts, a set of guardians and Wormhole daemon, ready to be used.  This is hard to deploy by-hand, you have been warned.
 
-```
- VAA
- i Bytes        Field   
- 0 1            Version
- 1 4            GuardianSetIndex
- 5 1            LenSignatures (LN)
- 6 66*LN        Signatures where each S = { guardianIndex (1),r(32),s(32),v(1) }
- -------------------------------------< hashed/signed body starts here.
- 4            timestamp
- 4            Nonce
- 2            emitterChainId
- 32           emitterAddress
- 8            sequence
- 1            consistencyLevel
- N            payload
- --------------------------------------< hashed/signed body ends here.
-```
-## Pricecaster Onchain App
+To use Tilt, 
 
-The Pricecaster App mantains a record of product/asset symbols (e.g ALGO/USD, BTC/USDT) indexed by keys of ASA IDs and a byte array encoding price and metrics information. As the original Pyth Payload is 150-bytes long and it wouldn't fit in the value field for each key, the Pricecaster contract converts on-the-fly the payload to a more compact form, discarding unneeded information.
+* Install Docker + Kubernetes Support.  The straightforward way is to use Docker Desktop and activate Kubernetes Support, both in Linux MacOS or Windows.
+* Install https://docs.tilt.dev/install.html.  Tilt can be installed under WSL.
+* Clone the Wormhole repository from  https://github.com/wormhole-foundation/wormhole.
+* Under this directory run
 
-The Pricecaster App stores the following stateful information:
+  ```
+  tilt up -- --algorand
+  ```
 
-* `coreId`:  The accepted Wormhole Core application Id.
+  The live Wormhole network runs 19 guardians, so to simulate more realistic conditions, set the number of guardians > 1 using the --num parameter.
 
-The Pricecaster app will allow storage to succeed only if the transaction group contains:
+* Use the Tilt console to check for all services to be ready.  Note that the Algorand sandbox will have several pre-made and pre-funded accounts with vanity-addresses prefixed by `DEV...`  Use those accounts for development only!
 
-* Sender is the contract creator.
-* Calls/optins issued with authorized appId (Wormhole Core).
-* Calls/optins issued for the Pricecaster appid.
-* Payment transfers for upfront fees from owner.
-* There must be at least one app call to Wormhole Core Id.
+## Pricecaster Onchain App Storage
 
-Consumers must interpret the stored bytes as fields organized as:
+The Pricecaster Smart Contract mantains a global space of storage with a layout of logical slots that are sequentially added as required. The global space key/value entries are stored as follows:
+
+| key | value |
+|-----|-------|
+| coreid | The Wormhole Core application id to validate VAAs |
+| 0x00   | Linear space, bytes 0..127 |
+| 0x01   | Linear space, bytes 128..255 |
+| 0x02   | Linear space, bytes 256..383 |
+| .    | .                          |
+| .    | .                          |
+| .    | .                          |
+| 0x3e | Linear space, bytes 7874..8001   |
+
+The linear space offers up to 8kB, each slot is 92 bytes wide (see format further below); so 86 slots are available. Actually 85 slots are available to store price information, as the slot with index 85 is the **system slot** which is used for internal data' bookkeeping. So the entire linear space is logically divided as:
+
+| Slot 0 | Slot 1 | ... | Slot 84 | System Slot |
+
+### System Slot
+
+The system slot has the following organization:
+
+| Field | Explanation | Size (bytes) |
+|-------|-------------|--------------|
+| Entry count | The number of allocated slots | 1 |
+| Reserved |  Reserved for future use | 91 |
+
+### Price slots
+
+Price slots have the following format:
 
 | Field         | Explanation | Size (bytes) |
 |---------------|-------------|--------------|
-| Price         | The price as integer.  Use the `exponent` field as `price` * 10^`exponent` to obtain decimal value. | 8            |
+| ASA ID        | The Algorand Standard Asset (ASA) identifier for this price | 8 |
 | Norm_Price    | The C3-Normalized price. See details below. | 8            |
+| Price         | The price as integer.  Use the `exponent` field as `price` * 10^`exponent` to obtain decimal value. | 8            |
 | Confidence    | The confidence (standard deviation) of the price | 8            |
 | Exponent      | The exponent to convert integer to decimal values | 4            | 
 | Price EMA     | The exponential-median-average (EMA) of the price field over a 30-day period | 8 | 
 | Confidence EMA| The exponential-median-average (EMA) of the confidence field over a 30-day period | 8 | 
-| Status        | 1 if this is a valid publication | 1 |
-| Timestamp     | The timestamp when Pyth stored this in Solana network | 8 |
-| OriginalKey   | The original Price/Product key pair of this product in the Pyth Network | 64 | 
+| Attestation Time | The timestamp of the moment the VAA was attested by the Wormhole network  | 8 |
+| Publish Time | The timestamp of the moment the price was published in the Pyth Network | 8 |
+| Prev Publish Time | The previous known Publish Time for this asset | 8 |
+| Prev Price | The previous known price for this asset | 8 | 
+| Prev Confidence | The previous known confidence ratio for this asset | 8 |
 
+A slot is allocated using the **alloc** app call. A slot allocation operation sets the ASA ID for which prices will be stored in the slot. Also this extends the number of valid slots by 1,  increasing the _entry count_ field in the **System Slot**.
 
 ### Price storage formats
 
@@ -124,6 +146,21 @@ With this in mind, the normalized price format will yield the following values w
 |0  |0  | p' = p*10^12|
 |19 |0  | p' = 0| 
 
+### Store operation
+
+The Pricecaster app will allow storage to succeed only if the transaction group contains:
+
+* Sender is the contract creator.
+* Calls/optins issued with authorized appId (Wormhole Core).
+* Calls/optins issued for the Pricecaster appid.
+* Payment transfers for upfront fees from owner.
+* There must be at least one app call to Wormhole Core Id.
+
+For normalized price calculation, the onchain ASA information is retrieved for the number of decimals. The exception is the ASA ID 0 which is used for **ALGO** with hardcoded 6 (six) decimals.
+
+### Reset operation
+
+The linear space can be zeroed, thus deallocating all slots and resetting the entry count to 0, by calling the privileged operation **reset**.
 
 
 ## Installation
@@ -136,64 +173,12 @@ npm install
 
 ## Deployment of Applications
 
-* The Wormhole Core contract and the VAA Verify code have it's own deployment tool `algorand/admin.py` at the Certus One repository. 
-
-Here is a sample output to deploy the Core Contracts in a sandboxed environment: 
-
-```$ python admin.py --devnet --boot
-(True, 'teal/core_approve.teal', 'teal/core_clear.teal', <algosdk.v2client.algod.AlgodClient object at 0x00000181066117E0>, 1002000, <TmplSig.TmplSig object at 0x0000018106611780>, True)
-Writing teal/core_approve.teal
-Writing teal/core_clear.teal
-Generating the teal for the core contracts
-Writing teal/token_approve.teal
-Writing teal/token_clear.teal
-Generating the teal for the token contracts: 4289
-Generating the foundation account...
-L9gdTqISnJFAwNgA10HFZ9ht+7SwtZ74TIzaMV8SV3nvYTyYkfnOklIxXQLpPsbQCjjNzsLZ+wbRX3xcjcK1vA==
-    album jazz check clay deal caught acoustic sugar theme also tired major sweet disagree mad remember because crop economy buffalo salmon setup skirt about gravity
-    55QTZGER7HHJEURRLUBOSPWG2AFDRTOOYLM7WBWRL56FZDOCWW6IMQYOU4
-KL347v/4UOjjG1usk1FKl7Ir0c0qF2mJahEX9buKwpH1Pb9oQQtnmiqxO31CXw+TbljMF1pI20BENHdKdI2fog==
-    pink title wash morning peanut wheel tenant force intact edge pioneer city first inmate filter blame coffee pretty master fabric jewel pencil mix above just
-    6U6362CBBNTZUKVRHN6UEXYPSNXFRTAXLJENWQCEGR3UU5ENT6RORDKSLA
-O0fX5N6oH7Y+LBNuiGNhz0Pz/ruMH3hDGtQu/ck31TZgr/b1yjwOtVx96AyF+Cj4aAuvOF5sfZGTm2YBP1VLNA==
-    trash fringe include mistake dismiss pulse giggle basket assist mixed radar diagram track zero grape buzz humor harbor head spray negative evil repeat ability relief
-    MCX7N5OKHQHLKXD55AGIL6BI7BUAXLZYLZWH3EMTTNTACP2VJM2P7VQ4TI
-QR6W4l7PKVIgdn+0ewEZw0eSQiMcLuWNmZGN4vOeJCwEqWbjAxODlHTRS8zHKJSprtmqa90CLXvUpLdetrfA8A==
-    sight flash image vote fatal behind rain legal isolate album milk label cause spawn three come royal great silver churn treat chicken gentle ability abstract
-    ASUWNYYDCOBZI5GRJPGMOKEUVGXNTKTL3UBC266UUS3V5NVXYDYBO2SK5A
-I2PB2eJQDiUUkJuxHtrfBBSNAK834YWap5iLtiMpSj8WeLLkp6FP9qpVSZEJ+XbIBIEwfSn1Jm4PYCapBXqozA==
-    good airport hollow athlete bronze announce level oppose stomach half husband doctor boss scan runway thrive expose oyster slush hamster electric medal where ability electric
-    CZ4LFZFHUFH7NKSVJGIQT6LWZACICMD5FH2SM3QPMATKSBL2VDGDX4P3DQ
-Te4Z62VmHq6hyl8fFp3rwRV/XKTK5KAMtPXf117oFLyGeeX5Qk6j277I6xMEXNh6rKSidaP+GA40oNPfKtYLPA==
-    situate guilt void green devote high fence garlic sentence inmate volume foster wreck blade festival tooth neglect south width law sad deliver thing absent dentist
-    QZ46L6KCJ2R5XPWI5MJQIXGYPKWKJITVUP7BQDRUUDJ56KWWBM6HW6FE74
-foundation address MCX7N5OKHQHLKXD55AGIL6BI7BUAXLZYLZWH3EMTTNTACP2VJM2P7VQ4TI  (100000.0 ALGO)
-
-Creating the PortalCore app
-Reading teal/core_approve.teal
-Reading teal/core_clear.teal
-{'address': 'JYJEGKPTKMW4SA2GX5J4XGGS2I4K2I2LLZN534P5KDEG4H7WYH2CF256K4',
- 'emitterAddress': '4e124329f3532dc90346bf53cb98d2d238ad234b5e5bddf1fd50c86e1ff6c1f4',
- 'wormhole core': '1054'}
-Create the token bridge
-Reading teal/token_approve.teal
-Reading teal/token_clear.teal
-token bridge contract is too large... This might prevent updates later
-{'address': 'XAMJRRHC36UE56QCLKS3HQ42EMWPMRBDCWGHFFT62PCAUOPWVXRDD5UF3M',
- 'emitterAddress': 'b81898c4e2dfa84efa025aa5b3c39a232cf64423158c72967ed3c40a39f6ade2',
- 'token bridge': '1056'}
-HFFy4BIqRzSIHs/OV0CY5e8UrfV3ns0QOWcfGwslXLSINIPubgTt57wILBF02Uc4hiW48pcXarei/6lLWNza4w==
-    castle sing ice patrol mixture artist violin someone what access slow wrestle clap hero sausage oyster boost tone receive rapid bike announce pepper absent involve
-    RA2IH3TOATW6PPAIFQIXJWKHHCDCLOHSS4LWVN5C76UUWWG43LRQNHGCD4
-Sent some ALGO to: castle sing ice patrol mixture artist violin someone what access slow wrestle clap hero sausage oyster boost tone receive rapid bike announce pepper absent involve
-```
-
 * To deploy the Pricecaster-V2, follow the instructions below.
 
 Use the deployment tools in `tools` subdirectory.
 
-* To deploy Pricecaster V2 TEAL to use with Wormhole, make sure you have Python environment running (preferably >=3.7.0), and `pyteal` installed with `pip3`.  
-* The deployment program will:  generate all TEAL files from PyTEAL sources and deploy the Pricekeeper V2 contract.
+* To deploy Pricecaster V2 TEAL to use with Wormhole, make sure you have Python environment running (preferably >=3.7.0), and `pyteal` installed with `pip3`.  PyTEAL >= 0.18 is required.
+* The deployment program will generate all TEAL files from PyTEAL sources and deploy the Pricecaster contract.
 
 For example, using `deploy` with sample output: 
 
@@ -201,25 +186,26 @@ For example, using `deploy` with sample output:
 $ npx ts-node  tools/deploy.ts 86525623 testnet keys/owner.key
 
 
-Pricecaster v2   Version 5.0  Apps Deployment Tool
+Pricecaster v2   Version 7.0  Apps Deployment Tool
 Copyright 2022 Randlabs Inc.
 
-Parameters for deployment:
-From: XNP7HMWUZAJTTHNIGENRKUQOGL5FQV3QVDGYUYUCGGNSHN3CQGMQKL3XHM
+Parameters for deployment: 
+From: 4NM56GAFQEXSEVZCLAUA6WXFGTRD6ZCEGNLGT2LGLY25CHA6RLGHQLPJVM
 Network: testnet
 Wormhole Core AppId: 86525623
 
 Enter YES to confirm parameters, anything else to abort. YES
-,Pricecaster V2 Program     Version 5.0, (c) 2022-23 Randlabs, inc.
+,Pricecaster V2 TEAL Program     Version 7.0, (c) 2022-23 Randlabs, inc.
 Compiling approval program...
 Written to teal/build/pricecaster-v2-approval.teal
 Compiling clear state program...
 Written to teal/build/pricecaster-v2-clear.teal
 ,
-Creating Pricekeeper V2...
-txId: RKNGKKO5WQ7W4JYNYDU2RYMBISFX4W7RQ2GJKCBIPV2IA4QWL75A
-Deployment App Id: 105363628
-Writing deployment results file DEPLOY-1660680886392...
+Deploying Pricecaster V2 Application...
+txId: DASH2CFGFKZZQR5SCNBE3MAJ65FXTU7345LY6QNPU4ZIFO2OHGTA
+Deployment App Id: 152656721
+Writing deployment results file DEPLOY-1673103606201...
+Bye.
 ```
 
 * Use the generated `DEPLOY-XXX` file to set values in the settings file regarding app ids.
@@ -237,14 +223,14 @@ The following settings are available:
 |algo.port   | The port to connect to the desired Algorand node.  |  
 |algo.dumpFailedTx|  Set to `true` to dump failed transactions. Intended for debugging and analysis. |
 |algo.dumpFailedTxDirectory|  Destination of .STXN (signed-transaction) files for analysis. |
+| pyth.priceService.mainnet | The Pyth price service URL for mainnet connection |
+| pyth.priceService.testnet | The Pyth price service URL for testnet connection | 
+| pyth.priceService.pollIntervalMs | The interval between the block of prices are polled from the Pyth Price service | 
 |    apps.pricecasterAppId | The application Id of the deployed VAA priceKeeper V2 TEAL program |
-|    apps.ownerAddress | The owner account address for the deployed programs |
 |    apps.ownerKeyFile| The file containing keys for the owner file. |
-|apps.asaIdMapperDataNetwork|  The network (testnet or mainnet) that the Mapper use to convert values |
-| pyth.chainId | The chainId of the Pyth data source |
-| pyth.emitterAddress | The address (in hex) of the Pyth emitter |
-| wormhole.spyServiceHost | The URI to listen for VAAs coming from the guardiand Spy service |
-| symbols.sourceNetwork | The Pyth price information source (mainnet-beta, devnet or testnet), this is used to solve symbol to textual representation and to update the Mapper |
+| storage.db |  The SQLite database file used by the Pricecaster backend |
+| network |  Set to testnet or mainnet | 
+| debug.skipPublish | Set to `true` to just fetch the prices without publishing anything | 
 
 ### Diagnosing failed transactions
 
@@ -291,13 +277,74 @@ goal clerk dryrun-remote -D dump.dr -v
 
 ```
 
-## Running the system
+## Backend operation 
 
-Check the `package.json` file for `npm run start-xxx`  automated commands. 
+### The Slot Layout database
+
+To know which price-identifiers to retrieve from the Pyth Network a local database is used containing tuples of `(slot, asaid, priceid)` where the `slot` and `asaid` fields in each row must be consistent with the on-chain slots. For example, if slot `4` is allocated to store ASA ID `15000` on chain, this must be reflected on the database. Typically, for a running production Pricecaster system the existent slots will be fairly stable.
+
+For development and initial production runs, preset slots can be bootstrapped using the `settings/bootSlotLayout.ts`  file. The file defines an array of slots with ASA ID and Pyth Price Ids; slots are allocated sequentially with the command: 
+
+```
+npm run bootstrap
+```
+
+:warn: This command will zero the onchain contract pointed by the `pricecasterAppId` setting!  
+
+After zeroing the contract, each slot will be assigned with the ASA ID specified.  Keep in mind that Pyth Price Ids must be mantained locally by the backend, as Pyth price ids are "chain agnostic". 
+
+This is a typical output of a bootstrapping process:
+
+```
+Pricecaster Service Backend  Version 7.0.0 -- Copyright (c) 2022, 23 Randlabs Inc.
+
+[2023-01-07 12:40:57] [INFO] - Loaded settings. 
+[2023-01-07 12:40:57] [INFO] - Using network: testnet
+[2023-01-07 12:40:57] [INFO] - Algorand Client: API: Port: 8002
+[2023-01-07 12:40:57] [INFO] - Wormhole Appids: Core 86525623  Bridge 86525641 
+[2023-01-07 12:40:57] [INFO] - Pricecaster Appid: 152524708
+[2023-01-07 12:40:57] [INFO] - Database full path ./db/pricecaster.dbt
+[2023-01-07 12:40:57] [WARN] - Bootstrapping process starting
+[2023-01-07 12:40:57] [INFO] - Dropping SlotLayout table
+[2023-01-07 12:40:57] [INFO] - Executed. Info: {"changes":0,"lastInsertRowid":0}
+[2023-01-07 12:40:57] [INFO] - Creating new SlotLayout table
+[2023-01-07 12:40:57] [INFO] - Executed. Info: {"changes":0,"lastInsertRowid":0}
+[2023-01-07 12:40:57] [WARN] - Resetting contract.
+[2023-01-07 12:41:03] [WARN] - Contract zeroed.
+[2023-01-07 12:41:03] [INFO] - Bootstrapped slot layout
+[2023-01-07 12:41:11] [INFO] - Added slot 0 for ASA ID: 0, PriceId: 08f781a893bc9340140c5f89c8a96f438bcfae4d1474cc0f688e3a52892c7318
+[2023-01-07 12:41:18] [INFO] - Added slot 1 for ASA ID: 122146368, PriceId: ca80ba6dc32e08d06f1aa886011eed1d77c77be9eb761cc10d72b7d0a2fd57a6
+[2023-01-07 12:41:25] [INFO] - Added slot 2 for ASA ID: 113638050, PriceId: 41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722
+[2023-01-07 12:41:32] [INFO] - Added slot 3 for ASA ID: 105300796, PriceId: d7566a3ba7f7286ed54f4ae7e983f4420ae0b1e0f3892e11f9c4ab107bbad7b9
+[2023-01-07 12:41:40] [INFO] - Added slot 4 for ASA ID: 52771911, PriceId: d2c2c1f2bba8e0964f9589e060c2ee97f5e19057267ac3284caef3bd50bd2cb5
+[2023-01-07 12:41:47] [INFO] - Added slot 5 for ASA ID: 100702091, PriceId: ecf553770d9b10965f8fb64771e93f5690a182edc32be4a3236e0caaa6e0581a
+[2023-01-07 12:41:47] [INFO] - Pre-flight consistency check running
+[2023-01-07 12:41:48] [INFO] - Pricecaster onchain entry count: 6, database count: 6
+[2023-01-07 12:41:49] [INFO] - Pricecaster slot 0 ASA: 0, database 0
+[2023-01-07 12:41:50] [INFO] - Pricecaster slot 1 ASA: 122146368, database 122146368
+[2023-01-07 12:41:51] [INFO] - Pricecaster slot 2 ASA: 113638050, database 113638050
+[2023-01-07 12:41:52] [INFO] - Pricecaster slot 3 ASA: 105300796, database 105300796
+[2023-01-07 12:41:53] [INFO] - Pricecaster slot 4 ASA: 52771911, database 52771911
+[2023-01-07 12:41:54] [INFO] - Pricecaster slot 5 ASA: 100702091, database 100702091
+[2023-01-07 12:41:54] [INFO] - Good, Pricecaster onchain and database slot layouts consistent.
+[2023-01-07 12:41:54] [INFO] - Bailing out, bye
+hernandp@thinkpadmx:~/src/pricecaster-v2
+```
+
+If you want to clear the contract, or the database independently use `RESETDB=1` or `RESETCONTRACT=1` environment variables.
+
+### Main Loop
+
+The Pricecaster backend will run in a continuous loop to:
+
+* Fetch one or more VAAs containing products prices according to the Slot Layout.  A VAA typically contains 5 attestations of prices, which may contain one or more of the specified prices. This means that if we ask for five prices they may be contained in one VAA payload, or to be distributed in five VAAs.  
+* Build a transaction group using the Wormhole SDK to verify the VAA and call the **store** application call.
+* Store statistics for monitoring operation.
+
 
 ## Tests
 
-Requirement: Algorand Sandbox.
+The tests are designed to run under **Tilt** environment.   See the Prerequisites section above on how to setup Tilt.
 
 Run the Pricecaster contract tests with:
 
@@ -307,57 +354,17 @@ npm run test-sc
 
 Backend tests will come shortly.
 
-## Guardian Spy Setup
-
-The guardiand daemon in Spy mode can be bootstrapped using Docker.  An appropiate dockerfile for the `mainnet-beta` network at the time of this writing is:
-
-```
-FROM docker.io/golang:1.17.0-alpine as builder
-
-RUN apk add --no-cache git gcc linux-headers alpine-sdk bash
-
-WORKDIR /app
-RUN git clone https://github.com/certusone/wormhole.git
-
-WORKDIR /app/wormhole/tools
-RUN CGO_ENABLED=0 ./build.sh
-
-WORKDIR /app/wormhole
-RUN tools/bin/buf lint && tools/bin/buf generate
-
-WORKDIR /app/wormhole/node/tools
-RUN go build -mod=readonly -o /dlv github.com/go-delve/delve/cmd/dlv
-
-WORKDIR /app/wormhole/node
-RUN go build -race -gcflags="all=-N -l" -mod=readonly -o /guardiand github.com/certusone/wormhole/node
-
-FROM docker.io/golang:1.17.0-alpine
-
-WORKDIR /app
-COPY --from=builder /guardiand /app/guardiand
-
-ENV PATH="/app:${PATH}"
-RUN addgroup -S pyth -g 10001 && adduser -S pyth -G pyth -u 10001
-RUN chown -R pyth:pyth .
-USER pyth
-
-ENTRYPOINT [ "guardiand", "spy", "--nodeKey", "/tmp/node.key" ]
-
-```
-
-You can bootstrap the dockerfile with: 
-
-```
-docker run -ti guardian-mainnet --nodeKey /tmp/node.key --spyRPC [::]:7074 --network /wormhole/mainnet/2 --bootstrap /dns4/wormhole-mainnet-v2-bootstrap.certus.one/udp/8999/quic/p2p/12D3KooWQp644DK27fd3d4Km3jr7gHiuJJ5ZGmy8hH4py7fP4FP7
-```
-
-For deployment, use `-p 7074` to expose ports; remove `-ti` and add `-d` to leave the container running in the background. (detached mode)
-
-
 ## Pricecaster SDK
 
 A Work-in-progress Javascript SDK exists, along with a React app showing how consumers can fetch symbols, price information from the contract,  and display this information in real-time. 
 Refer to the `pricecaster-sdk` repository.
+
+## Additional tools
+
+The following tools are available to help development:
+
+* `tools/dump-priceids.ts`:  Execute with `npx ts-node`  to dump all available products/assets available in Pyth with it's corresponding Price Id. The default behavior is to dump `devnet` prices, change to `mainnet-beta` if you want.
+* `tools/pcasmon.ts`: Tool to monitor the Pricecaster onchain contents. Execute it with the `appId` and `network` options.
 
 ## Appendix
 
@@ -366,6 +373,35 @@ Refer to the `pricecaster-sdk` repository.
 **TransactionPool.Remember: transaction XMGXHGC4GVEHQD2T7MZDKTFJWFRY5TFXX2WECCXBWTOZVHC7QLAA: overspend, account X**
 
 This means that this account has not enough balance to pay the fees for the  TX group.  
+
+### VAA Structure
+
+VAA structure is defined in: 
+ https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0001_generic_message_passing.md
+
+ Governance VAAs:
+ https://github.com/certusone/wormhole/blob/dev.v2/whitepapers/0002_governance_messaging.md
+
+ Sample Ethereum Struct Reference: 
+ https://github.com/certusone/wormhole/blob/dev.v2/ethereum/contracts/Structs.sol
+
+```
+ VAA
+ i Bytes        Field   
+ 0 1            Version
+ 1 4            GuardianSetIndex
+ 5 1            LenSignatures (LN)
+ 6 66*LN        Signatures where each S = { guardianIndex (1),r(32),s(32),v(1) }
+ -------------------------------------< hashed/signed body starts here.
+ 4            timestamp
+ 4            Nonce
+ 2            emitterChainId
+ 32           emitterAddress
+ 8            sequence
+ 1            consistencyLevel
+ N            payload
+ --------------------------------------< hashed/signed body ends here.
+```
 
 ### Sample Pyth VAA payload
 
@@ -408,7 +444,20 @@ fffffff8                                                            exponent
 
 ```
 
+## License
 
+Copyright 2022, 2023 Randlabs Inc. 
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 

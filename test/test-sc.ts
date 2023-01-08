@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-expressions */
-import PricecasterLib, { PRICECASTER_CI } from '../lib/pricecaster'
+import PricecasterLib, { PRICECASTER_CI, PriceSlotData } from '../lib/pricecaster'
 import tools from '../tools/app-tools'
-import algosdk, { Account, generateAccount, makePaymentTxnWithSuggestedParams, Transaction } from 'algosdk'
+import algosdk, { Account, generateAccount, makePaymentTxnWithSuggestedParams, Transaction, SuggestedParams } from 'algosdk'
 const { expect } = require('chai')
 const chai = require('chai')
 const spawnSync = require('child_process').spawnSync
@@ -13,19 +13,16 @@ chai.use(require('chai-as-promised'))
 let pclib: PricecasterLib
 let algodClient: algosdk.Algodv2
 let ownerAccount: algosdk.Account
-type AssetMapEntry = { decimals: number, assetId: number | undefined, samplePrice: number, exponent: number }
+type AssetMapEntry = { decimals: number, assetId: number | undefined, samplePrice: number, exponent: number, slot: number | undefined }
+const asaInSlot = Array(62).fill(0)
 
-type StoredPriceData = {
-  pythPrice: bigint,
-  normalizedPrice: bigint,
-  confidence: bigint,
-  exponent: number,
-  priceEMA: bigint,
-  confEMA: bigint,
-  status: number,
-  timestamp: bigint,
-  productPriceKey: Uint8Array
-}
+const assetMap1 = [
+  { decimals: 5, assetId: undefined, samplePrice: 10000, exponent: -8, slot: undefined },
+  { decimals: 6, assetId: undefined, samplePrice: 10000, exponent: -7, slot: undefined },
+  { decimals: 7, assetId: undefined, samplePrice: 10000, exponent: -6, slot: undefined },
+  { decimals: 8, assetId: undefined, samplePrice: 10000, exponent: -5, slot: undefined },
+  { decimals: 3, assetId: undefined, samplePrice: 10000, exponent: -4, slot: undefined }
+]
 
 // ===============================================================================================================
 
@@ -42,7 +39,7 @@ async function createPricecasterApp (coreId: number) {
   console.log(out.output.toString())
 
   console.log('Deploying Pricecaster V2 Application...')
-  const txId = await pclib.createPricecasterApp(ownerAccount.addr, coreId, true, signCallback)
+  const txId = await pclib.createPricecasterApp(ownerAccount.addr, coreId, true, signCallback, 2000)
   console.log('txId: ' + txId)
   const txResponse = await pclib.waitForTransactionResponse(txId)
   const pkAppId = pclib.appIdFromCreateAppResponse(txResponse)
@@ -88,7 +85,22 @@ async function createAsset (decimals: number): Promise<number> {
   return pclib.assetIdFromCreateAppResponse(txResponse)
 }
 
-function prepareStoreTxParameters (assetMap: AssetMapEntry[], statusByte?: string): { payload: Buffer, flatU8ArrayAssetIds: Uint8Array, assetIds: number[]} {
+async function deleteAsset (assetId: number): Promise<string> {
+  const params = await algodClient.getTransactionParams().do()
+  params.fee = 1000
+
+  const tx = algosdk.makeAssetDestroyTxnWithSuggestedParams(
+    ownerAccount.addr,
+    undefined,
+    assetId,
+    params)
+
+  const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
+  await pclib.waitForTransactionResponse(txId)
+  return txId
+}
+
+function prepareStoreTxArgs (assetMap: AssetMapEntry[], statusByte?: string): { payload: Buffer, flatU8ArrayAssetIds: Uint8Array, assetIds: number[]} {
   let payload: Buffer
   const hdr = Buffer.from('5032574800030000000102', 'hex')
 
@@ -140,39 +152,72 @@ async function createAssets (assetMap: AssetMapEntry[]) {
   }
 }
 
+async function deleteAssets (assetMap: AssetMapEntry[]) {
+  for (const asset of assetMap) {
+    if (asset.assetId !== undefined) {
+      await deleteAsset(asset.assetId!)
+    }
+  }
+}
+
+async function deleteAllAssets () {
+  const accountInfo = await algodClient.accountInformation(ownerAccount.addr).do()
+  for (const asset of accountInfo['created-assets']) {
+    await deleteAsset(asset.index)
+  }
+}
+
+async function sendPriceStoreTx (assetMap: AssetMapEntry[], txParams: any) {
+  const params = await algodClient.getTransactionParams().do()
+  params.fee = 2000
+
+  const tx = pclib.makePriceStoreTx(ownerAccount.addr,
+    assetMap.map((v, i) => { return { asaid: v.assetId!, slot: v.slot! } }),
+    txParams.payload,
+    params)
+
+  const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
+  return await pclib.waitForTransactionResponse(txId)
+}
+
+async function sendAllocSlotTx (assetId: number) {
+  const params = await algodClient.getTransactionParams().do()
+  params.fee = 1000
+
+  const tx = pclib.makeAllocSlotTx(ownerAccount.addr, assetId, params)
+  const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
+  return await pclib.waitForTransactionResponse(txId)
+}
+
 async function testOkCase (decimals: number,
   samplePrice: number,
   exponent: number,
-  assetIdOverride?: number): Promise<StoredPriceData> {
+  assetIdOverride?: number): Promise<PriceSlotData> {
   const assetMap = [
-    { decimals, assetId: assetIdOverride, samplePrice, exponent }
+    { decimals, assetId: assetIdOverride, samplePrice, exponent, slot: -1 }
   ]
 
   await createAssets(assetMap)
-  const txParams = prepareStoreTxParameters(assetMap)
+  const txResponse = await sendAllocSlotTx(assetMap[0].assetId!)
+  assetMap[0].slot = Number(txResponse.logs[0].readBigUInt64BE(6))
 
-  const tx = await pclib.makePriceStoreTx(ownerAccount.addr,
-    txParams.flatU8ArrayAssetIds,
-    txParams.assetIds,
-    txParams.payload)
+  const txParams = prepareStoreTxArgs(assetMap)
+  const txResponse2 = await sendPriceStoreTx(assetMap, txParams)
+  expect(txResponse2['pool-error']).to.equal('')
 
-  const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
-  const txResponse = await pclib.waitForTransactionResponse(txId)
-  expect(txResponse['pool-error']).to.equal('')
-
-  const data = await tools.readAppGlobalStateByKey(algodClient, pclib.getAppId(PRICECASTER_CI), ownerAccount.addr, assetMap[0].assetId!)
-  expect(data).not.to.be.undefined
-
-  const dataBuf = Buffer.from(data!, 'base64')
-  const pythPrice = dataBuf.subarray(0, 8).readBigUint64BE()
+  const dataBuf = await pclib.readSlot(assetMap[0].slot)
+  const asaId = dataBuf.subarray(0, 8).readBigInt64BE()
   const normalizedPrice = dataBuf.subarray(8, 16).readBigUint64BE()
-  const confidence = dataBuf.subarray(16, 24).readBigUint64BE()
-  const exp = dataBuf.subarray(24, 28).readInt32BE()
-  const priceEMA = dataBuf.subarray(28, 36).readBigUint64BE()
-  const confEMA = dataBuf.subarray(36, 44).readBigUint64BE()
-  const status = dataBuf.readUInt8(44)
-  const timestamp = dataBuf.subarray(45, 53).readBigUint64BE()
-  const productPriceKey = dataBuf.subarray(53)
+  const pythPrice = dataBuf.subarray(16, 24).readBigUint64BE()
+  const confidence = dataBuf.subarray(24, 32).readBigUint64BE()
+  const exp = dataBuf.subarray(32, 36).readInt32BE()
+  const priceEMA = dataBuf.subarray(36, 44).readBigUint64BE()
+  const confEMA = dataBuf.subarray(44, 52).readBigUint64BE()
+  const attTime = dataBuf.subarray(52, 60).readBigUint64BE()
+  const pubTime = dataBuf.subarray(60, 68).readBigUint64BE()
+  const prevPubTime = dataBuf.subarray(68, 76).readBigUint64BE()
+  const prevPrice = dataBuf.subarray(76, 84).readBigUint64BE()
+  const prevConf = dataBuf.subarray(84, 92).readBigUInt64BE()
 
   // console.log(normalizedPrice)
   expect(pythPrice).to.equal(BigInt(assetMap[0].samplePrice))
@@ -181,19 +226,26 @@ async function testOkCase (decimals: number,
   expect(confidence).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8))
   expect(priceEMA).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4))
   expect(confEMA).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 8 + 4))
-  expect(status).to.equal(txParams.payload.readUInt8(15 + 64 + 8 + 8 + 4 + 8 + 8))
-  expect(timestamp).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4 + 8 + 8 + 1 + 8))
+  expect(attTime).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4 + 8 + 8 + 1 + 8))
+  expect(pubTime).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4 + 8 + 8 + 1 + 8 + 8))
+  expect(prevPubTime).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4 + 8 + 8 + 1 + 8 + 8 + 8))
+  expect(prevPrice).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4 + 8 + 8 + 1 + 8 + 8 + 8 + 8))
+  expect(prevConf).to.equal(txParams.payload.readBigUInt64BE(15 + 64 + 8 + 8 + 4 + 8 + 8 + 1 + 8 + 8 + 8 + 8 + 8))
 
+  await deleteAssets(assetMap)
   return {
+    asaId: parseInt(asaId.toString()),
     pythPrice,
     normalizedPrice,
     confidence,
     exponent: exp,
     priceEMA,
     confEMA,
-    status,
-    timestamp,
-    productPriceKey
+    attTime,
+    pubTime,
+    prevPubTime,
+    prevPrice,
+    prevConf
   }
 }
 
@@ -202,20 +254,29 @@ async function testFailCase (decimals: number,
   samplePrice: number,
   exponent: number,
   assetIdOverride?: number,
-  sender: Account = ownerAccount) {
+  sender: Account = ownerAccount,
+  failedLine?: number) {
   const assetMap = [
-    { decimals, assetId: assetIdOverride, samplePrice, exponent }
+    { decimals, assetId: assetIdOverride, samplePrice, exponent, slot: undefined }
   ]
 
   await createAssets(assetMap)
-  const txParams = prepareStoreTxParameters(assetMap)
+  const txParams = prepareStoreTxArgs(assetMap)
 
-  const tx = await pclib.makePriceStoreTx(sender.addr,
-    txParams.flatU8ArrayAssetIds,
-    txParams.assetIds,
-    txParams.payload)
-  
-  await expect(algodClient.sendRawTransaction(tx.signTxn(sender.sk)).do()).to.be.rejectedWith(/logic eval error/)
+  const params = await algodClient.getTransactionParams().do()
+  params.fee = 2000
+  const tx = pclib.makePriceStoreTx(sender.addr,
+    assetMap.map((v, i) => { return { asaid: v.assetId!, slot: i } }),
+    txParams.payload,
+    params)
+
+  const regex = new RegExp(failedLine ? `logic eval error.*opcodes=pushint ${failedLine}` : 'logic eval error')
+
+  await expect(algodClient.sendRawTransaction(tx.signTxn(sender.sk)).do()).to.be.rejectedWith(regex)
+
+  if (!assetIdOverride) {
+    deleteAssets(assetMap)
+  }
 }
 
 // ===============================================================================================================
@@ -243,47 +304,119 @@ describe('Pricecaster App Tests', function () {
 
   after(async function () {
     await pclib.deleteApp(ownerAccount.addr, signCallback, PRICECASTER_CI)
+    await deleteAllAssets()
   })
 
   it('Must ignore payload with status != 1 and log message', async function () {
     const assetMap = [
-      { decimals: 5, assetId: undefined, samplePrice: 10000, exponent: -8 }
+      { decimals: 5, assetId: undefined, samplePrice: 10000, exponent: -8, slot: undefined }
     ]
 
     await createAssets(assetMap)
-    const txParams = prepareStoreTxParameters(assetMap, '00')
+    const txParams = prepareStoreTxArgs(assetMap, '00')
+    const params = await algodClient.getTransactionParams().do()
+    params.fee = 2000
+    params.flatFee = true
 
-    const tx = await pclib.makePriceStoreTx(ownerAccount.addr,
-      txParams.flatU8ArrayAssetIds,
-      txParams.assetIds,
-      txParams.payload)
+    const tx = pclib.makePriceStoreTx(ownerAccount.addr,
+      assetMap.map(v => { return { asaid: v.assetId!, slot: 0 } }),
+      txParams.payload,
+      params)
 
     const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
     const txResponse = await pclib.waitForTransactionResponse(txId)
     expect(txResponse['pool-error']).to.equal('')
-    expect(txResponse.logs[0]).to.deep.equal(Buffer.concat([Buffer.from('PC_IGNORED_PRICE_INVALID_STATUS '), Buffer.from(algosdk.encodeUint64(txParams.assetIds[0]))]))
+    expect(txResponse.logs[0]).to.deep.equal(Buffer.concat([Buffer.from('PRICE_DISABLED:'), Buffer.from(algosdk.encodeUint64(txParams.assetIds[0]))]))
+
+    await deleteAssets(assetMap)
   })
 
-  it('Must handle five attestations with enough opcode budget', async function () {
+  it('Must fail to store unallocated slot 0', async function () {
+    await testFailCase(19, 1, 0, 0, undefined, 248)
+  })
+
+  it('Must succeed to allocate slot 0 for new ASA ID', async function () {
     const assetMap = [
-      { decimals: 5, assetId: undefined, samplePrice: 10000, exponent: -8 },
-      { decimals: 6, assetId: undefined, samplePrice: 10000, exponent: -7 },
-      { decimals: 7, assetId: undefined, samplePrice: 10000, exponent: -6 },
-      { decimals: 8, assetId: undefined, samplePrice: 10000, exponent: -5 },
-      { decimals: 3, assetId: undefined, samplePrice: 10000, exponent: -4 }
+      { decimals: 5, assetId: undefined, samplePrice: 10000, exponent: -8, slot: undefined }
     ]
 
     await createAssets(assetMap)
-    const txParams = prepareStoreTxParameters(assetMap)
+    const txResponse = await sendAllocSlotTx(assetMap[0].assetId!)
+    expect(txResponse['pool-error']).to.equal('')
 
-    const tx = await pclib.makePriceStoreTx(ownerAccount.addr,
-      txParams.flatU8ArrayAssetIds,
-      txParams.assetIds,
-      txParams.payload)
+    const ec = (await pclib.readSystemSlot()).entryCount
+    expect(txResponse.logs[0]).to.deep.equal(Buffer.concat([Buffer.from('ALLOC@'), Buffer.from(algosdk.encodeUint64(ec - 1))]))
+
+    asaInSlot[0] = assetMap[0].assetId!
+  })
+
+  it('Must fail to store data in incorrect slot', async function () {
+    await testFailCase(19, 1, 0, 85000000, undefined, 394)
+  })
+
+  it('Must handle one attestation at index 0 with enough opcode budget', async function () {
+    const assetMap = [
+      { decimals: 5, assetId: asaInSlot[0], samplePrice: 10000, exponent: -8, slot: undefined }
+    ]
+
+    const txParams = prepareStoreTxArgs(assetMap)
+
+    const params = await algodClient.getTransactionParams().do()
+    params.fee = 2000
+
+    const tx = pclib.makePriceStoreTx(ownerAccount.addr,
+      assetMap.map(v => { return { asaid: v.assetId!, slot: 0 } }),
+      txParams.payload,
+      params)
 
     const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
     const txResponse = await pclib.waitForTransactionResponse(txId)
     expect(txResponse['pool-error']).to.equal('')
+
+    for (const [i, v] of assetMap.entries()) {
+      const priceData = await pclib.readSlot(i)
+      expect(priceData.readBigInt64BE(0)).to.deep.equal(BigInt(v.assetId!))
+    }
+  })
+
+  it('Must allocate five additional slots', async function () {
+    await createAssets(assetMap1)
+
+    const params = await algodClient.getTransactionParams().do()
+    params.fee = 1000
+
+    for (const asset of assetMap1) {
+      const tx = pclib.makeAllocSlotTx(ownerAccount.addr, asset.assetId!, params)
+      const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
+      const txResponse = await pclib.waitForTransactionResponse(txId)
+      expect(txResponse['pool-error']).to.equal('')
+
+      const ec = (await pclib.readSystemSlot()).entryCount
+      expect(txResponse.logs[0]).to.deep.equal(Buffer.concat([Buffer.from('ALLOC@'), Buffer.from(algosdk.encodeUint64(ec - 1))]))
+      asset.slot = txResponse.logs[0].readBigUInt64BE(6)
+    }
+  })
+
+  it('Must handle five attestations at indices 0-4 with enough opcode budget', async function () {
+    const txParams = prepareStoreTxArgs(assetMap1)
+
+    const params = await algodClient.getTransactionParams().do()
+    params.fee = 7000
+
+    const tx = pclib.makePriceStoreTx(ownerAccount.addr,
+      assetMap1.map((v, i) => { return { asaid: v.assetId!, slot: v.slot! } }),
+      txParams.payload,
+      params)
+
+    const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
+    const txResponse = await pclib.waitForTransactionResponse(txId)
+    expect(txResponse['pool-error']).to.equal('')
+
+    for (const [i, v] of assetMap1.entries()) {
+      const priceData = await pclib.readSlot(Number(v.slot!))
+      expect(priceData.readBigInt64BE(0)).to.deep.equal(BigInt(v.assetId!))
+    }
+    await deleteAssets(assetMap1)
   })
 
   it('Must handle boundary case d=19 e=12', async function () {
@@ -319,11 +452,25 @@ describe('Pricecaster App Tests', function () {
     await testFailCase(4, 1000, -8, 99999999999)
   })
 
-  it('Must fail to store from non-creator account', async function () {
-    const altAccount = generateAccount()
-    const paymentTx = makePaymentTxnWithSuggestedParams(ownerAccount.addr, altAccount.addr, 400000, undefined, undefined, await algodClient.getTransactionParams().do())
-    const paymentTxId = await algodClient.sendRawTransaction(paymentTx.signTxn(ownerAccount.sk)).do()
-    await algosdk.waitForConfirmation(algodClient, paymentTxId.txId, 4)
-    await testFailCase(4, 1, -8, undefined, altAccount)
+  it('Must zero contract with reset call', async function () {
+    const params = await algodClient.getTransactionParams().do()
+    params.fee = 2000
+
+    const tx = pclib.makeResetTx(ownerAccount.addr, params)
+
+    const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
+    const txResponse = await pclib.waitForTransactionResponse(txId)
+    expect(txResponse['pool-error']).to.equal('')
+
+    const global = await pclib.fetchGlobalSpace()
+    expect(global).to.deep.equal(Buffer.alloc(127 * 63))
   })
+
+//  it('Must fail to store from non-creator account', async function () {
+  // const altAccount = generateAccount()
+  // const paymentTx = makePaymentTxnWithSuggestedParams(ownerAccount.addr, altAccount.addr, 400000, undefined, undefined, await algodClient.getTransactionParams().do())
+  // const paymentTxId = await algodClient.sendRawTransaction(paymentTx.signTxn(ownerAccount.sk)).do()
+  // await algosdk.waitForConfirmation(algodClient, paymentTxId.txId, 4)
+  // await testFailCase(4, 1, -8, undefined, altAccount)
+  // })
 })

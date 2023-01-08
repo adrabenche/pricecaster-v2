@@ -1,5 +1,4 @@
-import { IPublisher, PublishInfo } from '../publisher/IPublisher'
-import { StatusCode } from '../common/statusCodes'
+import { IPublisher } from '../publisher/IPublisher'
 
 export class NullPublisher implements IPublisher {
   start (): void {
@@ -8,9 +7,6 @@ export class NullPublisher implements IPublisher {
   stop (): void {
   }
 
-  async publish (tick: any): Promise<PublishInfo> {
-    return {
-      status: StatusCode.NULL_DATA
-    }
+  async publish (tick: any): Promise<void> {
   }
 }
