@@ -1,7 +1,7 @@
 
 # Pricecaster Service
 
-**Version 7.0.0**
+**Version 7.0.0-alpha**
 - [Pricecaster Service](#pricecaster-service)
   * [Introduction](#introduction)
   * [System Overview](#system-overview)
