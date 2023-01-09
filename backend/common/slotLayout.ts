@@ -24,17 +24,16 @@ import algosdk, { Account } from 'algosdk'
 import { SlotInfo } from './basetypes'
 import * as Logger from '@randlabs/js-logger'
 import { bootstrapSlotLayoutInfo } from '../../settings/bootSlotLayout'
-import Database from 'better-sqlite3'
+import { PricecasterDatabase } from '../engine/Database'
 
 export class SlotLayout {
   private pclib: PricecasterLib
-  private db: Database.Database
-  constructor (readonly algodClient: algosdk.Algodv2, readonly ownerAccount: Account, readonly settings: IAppSettings) {
+  constructor (readonly algodClient: algosdk.Algodv2,
+      readonly ownerAccount: Account,
+      readonly settings: IAppSettings,
+      readonly pcDatabase: PricecasterDatabase) {
     this.pclib = new PricecasterLib(algodClient, this.ownerAccount.addr)
     this.pclib.setAppId(PRICECASTER_CI, this.settings.apps.pricecasterAppId)
-    const dbFullName = this.settings.storage.db + this.settings.network[0]
-    Logger.info('Database full path ' + dbFullName)
-    this.db = new Database(dbFullName)
   }
 
   async init (): Promise<boolean> {
@@ -66,16 +65,6 @@ export class SlotLayout {
   }
 
   /**
-   * Prepare and execute an SQL statement.
-   * @param sql SQL Statement to execute
-   */
-  private prepareAndExec (sql: string) {
-    const stmt = this.db.prepare(sql)
-    const info = stmt.run()
-    Logger.info('Executed. Info: ' + JSON.stringify(info))
-  }
-
-  /**
    * Zero all the contract slots, resetting the Pricecaster to initial state.
    */
   private async resetContractSlots () {
@@ -93,13 +82,9 @@ export class SlotLayout {
    */
   private createSlotLayoutTable (dropOldTable: boolean) {
     if (dropOldTable) {
-      Logger.info('Dropping SlotLayout table')
-      this.prepareAndExec('DROP TABLE IF EXISTS SlotLayout;')
+      this.pcDatabase.dropSlotLayoutTable()
     }
-
-    Logger.info('Creating new SlotLayout table')
-    this.prepareAndExec('CREATE TABLE SlotLayout ( Slot INTEGER, PriceId TEXT(64), AsaId INTEGER, ' +
-      'CONSTRAINT SlotLayout_PK PRIMARY KEY (Slot,PriceId, AsaId));')
+    this.pcDatabase.createSlotLayoutTable()
   }
 
   /**
@@ -125,33 +110,20 @@ export class SlotLayout {
    * Get available price Ids
    */
   getPriceIds (): string[] {
-    const ids = []
-    const stmt = this.db.prepare('SELECT PriceId FROM SlotLayout')
-    for (const row of stmt.iterate()) {
-      ids.push(row.PriceId)
-    }
-    return ids
+    return this.pcDatabase.getPriceIds()
   }
 
   /**
    * Get slot info by Price Id
    */
   getSlotByPriceId (id: string): SlotInfo | undefined {
-    const stmt = this.db.prepare('SELECT Slot, AsaId FROM SlotLayout WHERE PriceId = ?')
-    const row = stmt.get(id)
-    return row
-      ? {
-          priceId: id,
-          asaId: row.AsaId,
-          slot: row.Slot
-        }
-      : undefined
+    return this.pcDatabase.getSlotByPriceId(id)
   }
 
   /**
    * Allocates a new contract price slot and updates internal structure
    */
-  private async allocSlot (asaId: number, priceId: string): Promise<number> {
+  async allocSlot (asaId: number, priceId: string): Promise<number> {
     const txParams = await this.algodClient.getTransactionParams().do()
     const tx = this.pclib.makeAllocSlotTx(this.ownerAccount.addr, asaId, txParams)
     const { txId } = await this.algodClient.sendRawTransaction(tx.signTxn(this.ownerAccount.sk)).do()
@@ -159,8 +131,7 @@ export class SlotLayout {
 
     // Extract from log
     const slotId = Number(txResponse.logs[0].readBigUInt64BE('ALLOC@'.length))
-    const stmt = this.db.prepare('INSERT INTO SlotLayout (Slot, PriceId, AsaId) VALUES (?, ? ,?)')
-    stmt.run(slotId, priceId, asaId)
+    this.pcDatabase.addSlotLayoutEntry(slotId, priceId, asaId)
     return slotId
   }
 
@@ -170,16 +141,14 @@ export class SlotLayout {
   private async preflightConsistencyCheck (): Promise<boolean> {
     Logger.info('Pre-flight consistency check running')
     const sysSlot = await this.pclib.readSystemSlot()
-    let stmt = this.db.prepare('SELECT COUNT(*) FROM SlotLayout')
-    const rowCount = stmt.get()['COUNT(*)']
+    const rowCount = this.pcDatabase.getSlotLayoutRowCount()
     Logger.info(`Pricecaster onchain entry count: ${sysSlot.entryCount}, database count: ${rowCount}`)
+
     if (rowCount !== sysSlot.entryCount) {
       return false
     }
 
-    stmt = this.db.prepare('SELECT * FROM SlotLayout')
-
-    for (const row of stmt.iterate()) {
+    for (const row of this.pcDatabase.getSlotLayoutRowIterator()) {
       const slotdata = await this.pclib.readParsePriceSlot(row.Slot)
       Logger.info(`Pricecaster slot ${row.Slot} ASA: ${slotdata.asaId}, database ${row.AsaId}`)
       if (slotdata.asaId !== row.AsaId) {
