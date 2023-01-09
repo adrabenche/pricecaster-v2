@@ -34,6 +34,8 @@ export class PricecasterPublisher implements IPublisher {
   private active: boolean
   private algodClient: algosdk.Algodv2
   private pclib: PricecasterLib
+  private txParams!: SuggestedParams
+  private cyclesToNextTxParamsUpdate: number
   constructor (readonly algodv2: Algodv2,
     readonly senderAccount: algosdk.Account,
     readonly stats: Statistics,
@@ -45,6 +47,7 @@ export class PricecasterPublisher implements IPublisher {
     this.pclib.setDumpFailedTxDirectory(this.settings.algo.dumpFailedTxDirectory ?? '/.')
     this.pclib.setAppId(PRICECASTER_CI, this.settings.apps.pricecasterAppId)
     this.active = false
+    this.cyclesToNextTxParamsUpdate = 0
   }
 
   start () {
@@ -60,13 +63,15 @@ export class PricecasterPublisher implements IPublisher {
     if (!this.active) {
       return
     }
-    const t0 = _.now()
-    const txParams = await this.algodClient.getTransactionParams().do()
-    // console.log(`time. getTransactionParams: ${_.now() - t0}`)
+
+    if (this.cyclesToNextTxParamsUpdate++ === 0) {
+      Logger.info('Refreshing transaction network parameters')
+      this.txParams = await this.algodClient.getTransactionParams().do()
+    }
 
     const publishCalls: Promise<any>[] = []
     for (const vaa of vaaList) {
-      publishCalls.push(this.submit(txParams, vaa))
+      publishCalls.push(this.submit(this.txParams, vaa))
     }
 
     const pricesPublish = await Promise.allSettled(publishCalls)
@@ -79,6 +84,10 @@ export class PricecasterPublisher implements IPublisher {
         this.stats.increaseFailedTxCount()
       }
     })
+
+    if (this.cyclesToNextTxParamsUpdate === this.settings.algo.getNetworkTxParamsCycleInterval) {
+      this.cyclesToNextTxParamsUpdate = 0
+    }
   }
 
   /**

@@ -49,7 +49,8 @@ export interface IAppSettings extends Record<string, unknown> {
     api: string,
     port: string,
     dumpFailedTx: boolean,
-    dumpFailedTxDirectory?: string
+    dumpFailedTxDirectory?: string,
+    getNetworkTxParamsCycleInterval: number,
   },
   apps: {
     pricecasterAppId: number,
