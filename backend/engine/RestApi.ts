@@ -20,9 +20,34 @@
 
 import { IAppSettings } from '../common/settings'
 import { Statistics } from './Stats'
-import Fastify, { FastifyInstance } from 'fastify'
+import Fastify, { FastifyInstance, FastifyRequest } from 'fastify'
 import * as Logger from '@randlabs/js-logger'
 import { SlotLayout } from '../common/slotLayout'
+
+const assetRegisterSchema = {
+  schema: {
+    body: {
+      type: 'object',
+      required: ['asaId', 'priceId'],
+      properties: {
+        asaId: { type: 'number' },
+        priceId: {
+          type: 'string',
+          maxLength: 64,
+          minLength: 64,
+          pattern: '^[a-fA-F0-9]+$/g'
+        },
+        slotHint: { type: 'number' }
+      }
+    }
+  }
+}
+
+type AssetRegisterBody = {
+  asaId: number,
+  priceId: string,
+  slotHint?: number
+}
 
 export class RestApi {
   private server: FastifyInstance
@@ -30,7 +55,7 @@ export class RestApi {
   constructor (readonly settings: IAppSettings,
     readonly slotLayout: SlotLayout,
     readonly stats: Statistics) {
-    this.server = Fastify({})
+    this.server = Fastify({ logger: true })
   }
 
   async init () {
@@ -38,12 +63,29 @@ export class RestApi {
       return this.stats.getTxStats()
     })
 
+    this.server.post('/stats/reset', async (req, reply) => {
+      this.stats.resetStats()
+    })
+
     this.server.get('/health', async (req, reply) => ({
       health: 'ok'
     }))
 
-    this.server.post('/asset/register', async (req, reply) => {
-      return { pong: 'works' }
+    this.server.post('/asset/register', async (req: FastifyRequest<{ Body: AssetRegisterBody }>, reply) => {
+      // ensure we are still consistent!
+
+      const { asaId, priceId, slotHint } = req.body
+
+      if (this.slotLayout.getDatabaseSlotCount() !== await this.slotLayout.getPricecasterSlotcount()) {
+        reply.code(500).send(new Error('Onchain and local databases are inconsistent, cannot proceed'))
+      }
+
+      if (slotHint !== this.slotLayout.getDatabaseSlotCount()) {
+        reply.code(400).send(new Error('Slot hint invalid'))
+      }
+
+      const slotId = await this.slotLayout.allocSlot(asaId, priceId)
+      return { slotId }
     })
 
     await this.server.listen({ port: this.settings.rest.port })
