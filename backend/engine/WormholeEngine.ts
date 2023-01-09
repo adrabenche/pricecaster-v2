@@ -32,6 +32,11 @@ import { RestApi } from './RestApi'
 import { PricecasterDatabase } from './Database'
 const fs = require('fs')
 
+export type EngineSwitch = {
+  publishEnable: boolean,
+  refreshPriceIdLatch: boolean
+}
+
 export class WormholeClientEngine implements IEngine {
   private fetcher!: PythPriceServiceFetcher
   private publisher!: IPublisher
@@ -40,6 +45,10 @@ export class WormholeClientEngine implements IEngine {
   private slotLayout!: SlotLayout
   private shouldQuit: boolean
   private restApi!: RestApi
+  private engineSwitch: EngineSwitch = {
+    publishEnable: false,
+    refreshPriceIdLatch: true
+  }
 
   constructor (settings: IAppSettings) {
     this.settings = settings
@@ -84,7 +93,7 @@ export class WormholeClientEngine implements IEngine {
     }
 
     Logger.info('Starting statistics module...')
-    this.stats = new Statistics(this.settings)
+    this.stats = new Statistics(this.settings, db)
 
     Logger.info('Starting Rest API module...')
     this.restApi = new RestApi(this.settings, this.slotLayout, this.stats)

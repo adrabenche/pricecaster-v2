@@ -19,8 +19,9 @@
  */
 
 import { IAppSettings } from '../common/settings'
+import { PricecasterDatabase } from './Database'
 
-type TxStats = {
+export type TxStats = {
   error: number,
   success: number,
   avgCycleTime: number
@@ -29,42 +30,38 @@ type TxStats = {
 }
 
 export class Statistics {
-  private txStats!: TxStats
-  constructor (readonly settings: IAppSettings) {
-    this.resetStats()
-  }
-
-  resetStats () {
-    this.txStats = {
-      error: 0,
-      success: 0,
-      avgCycleTime: 0,
-      fees: 0,
-      cost: 0
+  constructor (readonly settings: IAppSettings, readonly pcDatabase: PricecasterDatabase) {
+    if (process.env.RESETSTATS === '1') {
+      pcDatabase.dropStatsLayoutTable()
+      pcDatabase.createStatsTable()
     }
   }
 
+  resetStats () {
+    this.pcDatabase.resetStats()
+  }
+
   increaseSuccessTxCount () {
-    this.txStats.success++
+    this.pcDatabase.incSuccessTxCount()
   }
 
   increaseFailedTxCount () {
-    this.txStats.error++
+    this.pcDatabase.incErrorTxCount()
   }
 
   getSuccessTxCount (): number {
-    return this.txStats.success
+    return this.pcDatabase.getSuccessTxCount()
   }
 
   getFailedTxCount (): number {
-    return this.txStats.error
+    return this.pcDatabase.getErrorTxCount()
   }
 
   getAvgCycleTime (): number {
-    return this.getAvgCycleTime()
+    return this.pcDatabase.getAvgCycleTime()
   }
 
   getTxStats (): TxStats {
-    return this.txStats
+    return this.pcDatabase.getStats()
   }
 }

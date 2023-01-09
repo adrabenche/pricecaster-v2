@@ -25,9 +25,11 @@ import { SlotInfo } from './basetypes'
 import * as Logger from '@randlabs/js-logger'
 import { bootstrapSlotLayoutInfo } from '../../settings/bootSlotLayout'
 import { PricecasterDatabase } from '../engine/Database'
+import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
 
 export class SlotLayout {
   private pclib: PricecasterLib
+  private fetcher!: PythPriceServiceFetcher
   constructor (readonly algodClient: algosdk.Algodv2,
       readonly ownerAccount: Account,
       readonly settings: IAppSettings,
@@ -173,5 +175,12 @@ export class SlotLayout {
       }
     }
     return true
+  }
+
+  /**
+   * Set active publisher
+   */
+  setPublisher (fetcher: PythPriceServiceFetcher) {
+    this.fetcher = fetcher
   }
 }
