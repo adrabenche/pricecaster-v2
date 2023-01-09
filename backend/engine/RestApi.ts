@@ -24,25 +24,6 @@ import Fastify, { FastifyInstance, FastifyRequest } from 'fastify'
 import * as Logger from '@randlabs/js-logger'
 import { SlotLayout } from '../common/slotLayout'
 
-const assetRegisterSchema = {
-  schema: {
-    body: {
-      type: 'object',
-      required: ['asaId', 'priceId'],
-      properties: {
-        asaId: { type: 'number' },
-        priceId: {
-          type: 'string',
-          maxLength: 64,
-          minLength: 64,
-          pattern: '^[a-fA-F0-9]+$/g'
-        },
-        slotHint: { type: 'number' }
-      }
-    }
-  }
-}
-
 type AssetRegisterBody = {
   asaId: number,
   priceId: string,
@@ -52,13 +33,13 @@ type AssetRegisterBody = {
 export class RestApi {
   private server: FastifyInstance
 
-  constructor (readonly settings: IAppSettings,
+  constructor(readonly settings: IAppSettings,
     readonly slotLayout: SlotLayout,
     readonly stats: Statistics) {
     this.server = Fastify({ logger: true })
   }
 
-  async init () {
+  async init() {
     this.server.get('/stats', async (req, reply) => {
       return this.stats.getTxStats()
     })
@@ -71,27 +52,46 @@ export class RestApi {
       health: 'ok'
     }))
 
-    this.server.post('/asset/register', async (req: FastifyRequest<{ Body: AssetRegisterBody }>, reply) => {
-      // ensure we are still consistent!
+    this.server.post('/asset/register',
+      {
+        schema: {
+          body: {
+            type: 'object',
+            required: ['asaId', 'priceId'],
+            properties: {
+              asaId: { type: 'number' },
+              priceId: {
+                type: 'string',
+                maxLength: 64,
+                minLength: 64,
+                pattern: '^[a-fA-F0-9]+$'
+              },
+              slotHint: { type: 'number' }
+            }
+          }
+        }
+      },
+      async (req: FastifyRequest<{ Body: AssetRegisterBody }>, reply) => {
+        // ensure we are still consistent!
 
-      const { asaId, priceId, slotHint } = req.body
+        const { asaId, priceId, slotHint } = req.body
 
-      if (this.slotLayout.getDatabaseSlotCount() !== await this.slotLayout.getPricecasterSlotcount()) {
-        reply.code(500).send(new Error('Onchain and local databases are inconsistent, cannot proceed'))
-      }
+        if (this.slotLayout.getDatabaseSlotCount() !== await this.slotLayout.getPricecasterSlotcount()) {
+          reply.code(500).send(new Error('Onchain and local databases are inconsistent, cannot proceed'))
+        }
 
-      if (slotHint !== this.slotLayout.getDatabaseSlotCount()) {
-        reply.code(400).send(new Error('Slot hint invalid'))
-      }
+        if (slotHint !== this.slotLayout.getDatabaseSlotCount()) {
+          reply.code(400).send(new Error('Slot hint invalid'))
+        }
 
-      const slotId = await this.slotLayout.allocSlot(asaId, priceId)
-      return { slotId }
-    })
+        const slotId = await this.slotLayout.allocSlot(asaId, priceId)
+        return { slotId }
+      })
 
     await this.server.listen({ port: this.settings.rest.port })
   }
 
-  async stop () {
+  async stop() {
     Logger.info('Shutting down Rest API server...')
     await this.server.close()
   }
