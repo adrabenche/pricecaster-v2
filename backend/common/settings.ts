@@ -57,6 +57,7 @@ export interface IAppSettings extends Record<string, unknown> {
   },
   debug?: {
     skipPublish?: boolean,
+    skipConsistencyCheck?: boolean
   },
   storage: {
     db: string

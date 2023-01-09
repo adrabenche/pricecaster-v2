@@ -50,11 +50,13 @@ export class SlotLayout {
         this.resetContractSlots()
       }
 
-      if (!await this.preflightConsistencyCheck()) {
-        Logger.error('Consistency check failed. ')
-        ok = false
-      } else {
-        Logger.info('Good, Pricecaster onchain and database slot layouts consistent.')
+      if (!this.settings.debug?.skipConsistencyCheck) {
+        if (!await this.preflightConsistencyCheck()) {
+          Logger.error('Consistency check failed. ')
+          ok = false
+        } else {
+          Logger.info('Good, Pricecaster onchain and database slot layouts consistent.')
+        }
       }
     } catch (e: any) {
       Logger.error('Initialization failed: ' + e.toString())
@@ -118,6 +120,21 @@ export class SlotLayout {
    */
   getSlotByPriceId (id: string): SlotInfo | undefined {
     return this.pcDatabase.getSlotByPriceId(id)
+  }
+
+  /**
+   * Get database slot count
+   */
+  getDatabaseSlotCount (): number {
+    return this.pcDatabase.getSlotLayoutRowCount()
+  }
+
+  /**
+   * Get onchain Pricecaster slot count
+   */
+  async getPricecasterSlotcount (): Promise<number> {
+    const sysSlot = await this.pclib.readSystemSlot()
+    return sysSlot.entryCount
   }
 
   /**
