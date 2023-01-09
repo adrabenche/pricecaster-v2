@@ -29,8 +29,12 @@ type TxStats = {
 }
 
 export class Statistics {
-  private txStats: TxStats
+  private txStats!: TxStats
   constructor (readonly settings: IAppSettings) {
+    this.resetStats()
+  }
+
+  resetStats () {
     this.txStats = {
       error: 0,
       success: 0,
