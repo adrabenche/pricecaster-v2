@@ -1,4 +1,7 @@
 module.exports = {
+  rest: {
+    port: 4884
+  },
   pyth: {
     priceService: {
       mainnet: 'https://xc-mainnet.pyth.network',
@@ -35,7 +38,7 @@ module.exports = {
     ownerKeyFile: './keys/owner.key'
   },
   debug: {
-    skipPublish: false
+    skipPublish: true 
   },
   storage: {
     db: './db/pricecaster.db'

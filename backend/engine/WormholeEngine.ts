@@ -28,7 +28,8 @@ import algosdk, { Algodv2 } from 'algosdk'
 import { IPublisher } from '../publisher/IPublisher'
 import { Statistics } from './Stats'
 import { SlotLayout } from '../common/slotLayout'
-import { bootstrapSlotLayoutInfo } from '../../settings/bootSlotLayout'
+import { RestApi } from './RestApi'
+import { PricecasterDatabase } from './Database'
 const fs = require('fs')
 
 export class WormholeClientEngine implements IEngine {
@@ -38,6 +39,8 @@ export class WormholeClientEngine implements IEngine {
   private settings: IAppSettings
   private slotLayout!: SlotLayout
   private shouldQuit: boolean
+  private restApi!: RestApi
+
   constructor (settings: IAppSettings) {
     this.settings = settings
     this.shouldQuit = false
@@ -50,6 +53,7 @@ export class WormholeClientEngine implements IEngine {
       this.publisher.stop()
       this.fetcher.shutdown()
       await Logger.finalize()
+      this.restApi.stop()
     }
   }
 
@@ -57,6 +61,8 @@ export class WormholeClientEngine implements IEngine {
     process.on('SIGINT', async () => {
       await this.shutdown()
     })
+
+    const db = new PricecasterDatabase(this.settings)
 
     const algodClient = new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port)
     let ownerAccount: algosdk.Account
@@ -67,7 +73,7 @@ export class WormholeClientEngine implements IEngine {
       throw new Error('❌ Cannot get owner address: ' + e)
     }
 
-    this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings)
+    this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings, db)
 
     const initResult = await this.slotLayout.init()
 
@@ -78,7 +84,11 @@ export class WormholeClientEngine implements IEngine {
     }
 
     Logger.info('Starting statistics module...')
-    this.stats = new Statistics()
+    this.stats = new Statistics(this.settings)
+
+    Logger.info('Starting Rest API module...')
+    this.restApi = new RestApi(this.settings, this.slotLayout, this.stats)
+    await this.restApi.init()
 
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')

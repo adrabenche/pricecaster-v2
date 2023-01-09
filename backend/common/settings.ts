@@ -24,6 +24,9 @@ import { Options } from '@randlabs/js-logger'
 export type Filter = { 'chain_id': number, 'emitter_address': string }
 
 export interface IAppSettings extends Record<string, unknown> {
+  rest: {
+    port: number
+  },
   pyth: {
     priceService: {
       mainnet: string,
@@ -52,12 +55,9 @@ export interface IAppSettings extends Record<string, unknown> {
     pricecasterAppId: number,
     ownerKeyFile: string,
   },
-  txMonitor: {
-    updateIntervalMs: number,
-    confirmationThreshold: number
-  }
   debug?: {
     skipPublish?: boolean,
+    skipConsistencyCheck?: boolean
   },
   storage: {
     db: string

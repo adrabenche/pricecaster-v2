@@ -18,6 +18,8 @@
  * limitations under the License.
  */
 
+import { IAppSettings } from '../common/settings'
+
 type TxStats = {
   error: number,
   success: number,
@@ -27,8 +29,12 @@ type TxStats = {
 }
 
 export class Statistics {
-  private txStats: TxStats
-  constructor () {
+  private txStats!: TxStats
+  constructor (readonly settings: IAppSettings) {
+    this.resetStats()
+  }
+
+  resetStats () {
     this.txStats = {
       error: 0,
       success: 0,
@@ -56,5 +62,9 @@ export class Statistics {
 
   getAvgCycleTime (): number {
     return this.getAvgCycleTime()
+  }
+
+  getTxStats (): TxStats {
+    return this.txStats
   }
 }
