@@ -29,6 +29,7 @@ import { IPublisher } from '../publisher/IPublisher'
 import { Statistics } from './Stats'
 import { SlotLayout } from '../common/slotLayout'
 import { RestApi } from './RestApi'
+import { PricecasterDatabase } from './Database'
 const fs = require('fs')
 
 export class WormholeClientEngine implements IEngine {
@@ -61,6 +62,8 @@ export class WormholeClientEngine implements IEngine {
       await this.shutdown()
     })
 
+    const db = new PricecasterDatabase(this.settings)
+
     const algodClient = new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port)
     let ownerAccount: algosdk.Account
     try {
@@ -70,7 +73,7 @@ export class WormholeClientEngine implements IEngine {
       throw new Error('❌ Cannot get owner address: ' + e)
     }
 
-    this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings)
+    this.slotLayout = new SlotLayout(algodClient, ownerAccount, this.settings, db)
 
     const initResult = await this.slotLayout.init()
 
