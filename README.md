@@ -2,6 +2,7 @@
 # Pricecaster Service
 
 **Version 7.0.0-alpha**
+
 - [Pricecaster Service](#pricecaster-service)
   * [Introduction](#introduction)
   * [System Overview](#system-overview)
@@ -21,6 +22,7 @@
   * [Backend operation](#backend-operation)
     + [The Slot Layout database](#the-slot-layout-database)
     + [Main Loop](#main-loop)
+    + [REST API](#rest-api)
   * [Tests](#tests)
   * [Pricecaster SDK](#pricecaster-sdk)
   * [Additional tools](#additional-tools)
@@ -102,7 +104,28 @@ The system slot has the following organization:
 | Field | Explanation | Size (bytes) |
 |-------|-------------|--------------|
 | Entry count | The number of allocated slots | 1 |
-| Reserved |  Reserved for future use | 91 |
+| Config flags | A set of configuration flags. See below |
+| Reserved |  Reserved for future use | 90 |
+
+
+#### Configuration flags
+
+The **setflags** app call is used by the operator to change operating flags. This field is a 8-bit number with the following meaning:
+
+```
+7 6 5 4 3 2 1 0
++ + + + + + + + 
+| | | | | | | +-------- Reserved
+| | | | | | +---------- Reserved
+| | | | | +------------ Reserved
+| | | | +-------------- Reserved
+| | | +---------------- Reserved
+| | +------------------ Reserved
+| +-------------------- Reserved
++---------------------- Enable test mode (bypass VAA/group checks)
+```
+
+The TEST MODE bit must be used **ONLY** in development mode, as it disables all security and VAA signature checks.
 
 ### Price slots
 
@@ -340,6 +363,12 @@ The Pricecaster backend will run in a continuous loop to:
 * Fetch one or more VAAs containing products prices according to the Slot Layout.  A VAA typically contains 5 attestations of prices, which may contain one or more of the specified prices. This means that if we ask for five prices they may be contained in one VAA payload, or to be distributed in five VAAs.  
 * Build a transaction group using the Wormhole SDK to verify the VAA and call the **store** application call.
 * Store statistics for monitoring operation.
+
+
+## Rest API
+
+The backend offers a REST API with the following endpoints.
+
 
 
 ## Tests

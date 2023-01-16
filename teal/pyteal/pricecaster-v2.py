@@ -4,7 +4,7 @@
 
 The Pricecaster Onchain Program
 
-Version 7.0
+Version 7.1
 
 (c) 2022-23 Randlabs, inc.
 
@@ -21,13 +21,10 @@ v6.5 - Use OpPull for budget maximization.
        Reject publications with Status != 1
        Modify normalization price handling.
 v7.0 - C3-Testnet deployment version: Use linear-addressable global space for entries.
+v7.1 - Configuration flags. Remove of old TMPL_I_TESTING template parameter.
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the Wormhole VAA verification transaction group.
-
-The following application calls are available.
-
-store: Submit payload.  
 
 The payload format must be V3, with batched message support.
 
@@ -76,7 +73,8 @@ The system slot layout is as follows:
 
 Byte 
 0           Last allocated slot.  
-1..91       Reserved
+1           Config flags.
+2..91       Reserved
 ------------------------------------------------------------------------------------------------
 """
 from inspect import currentframe
@@ -90,6 +88,7 @@ METHOD = Txn.application_args[0]
 ASAID_SLOT_ARRAY = Txn.application_args[1]
 PYTH_PAYLOAD = Txn.application_args[2]
 ALLOC_ASA_ID = Txn.application_args[1]
+FLAGS_ARG = Txn.application_args[1]
 SLOT_TEMP = ScratchVar(TealType.uint64)
 WORMHOLE_CORE_ID = App.globalGet(Bytes("coreid"))
 PYTH_ATTESTATION_V2_BYTES = 149
@@ -134,6 +133,8 @@ BLOCK1_STATUS_LEN = Int(1)
 BLOCK2_OFFSET = Int(109)
 BLOCK2_LEN = Int(40)
 
+PUB_TIME_FIELD_OFFSET = Int(68)
+
 ASAID_SLOT_TUPLE_SIZE = Int(9)
 UINT64_SIZE = Int(8)
 UINT32_SIZE = Int(4)
@@ -145,13 +146,16 @@ IGNORE_ATTESTATION = Int(0xFFFFFFFFFFFFFFFF)
 ENTRY_NOT_FOUND    = Int(0xFFFFFFFFFFFFFF00)
 GLOBAL_SPACE_FULL  = Int(0xFFFFFFFFFFFFFF01)
 
+# Configuration flag bits positions
+
+FLAG_TEST_MODE = Int(128)
+
 def XAssert(cond):
     return Assert(And(cond, Int(currentframe().f_back.f_lineno)))
 
 @Subroutine(TealType.uint64)
 def is_creator():
     return Txn.sender() == Global.creator_address()
-
 
 @Subroutine(TealType.uint64)
 # Arg0: Bootstrap with the authorized VAA Processor appid.
@@ -194,7 +198,7 @@ def check_group_tx():
                     )))
                 ])
         ),
-        XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), is_corecall.load() == Int(1))),
+        XAssert(is_corecall.load() == Int(1)),
         Return(Int(1))
     ])
 
@@ -235,11 +239,9 @@ def get_entry_count():
 def inc_entry_count(prevCount):
     return GlobalBlob.write(SYSTEM_SLOT_INDEX * Int(SLOT_SIZE), Extract(Itob(prevCount + Int(1)), Int(7), Int(1)))
 
-
 @Subroutine(TealType.bytes)
 def read_slot(slot):
     return GlobalBlob.read(slot * Int(SLOT_SIZE), (slot + Int(1)) * Int(SLOT_SIZE))
-
 
 @Subroutine(TealType.none)
 def write_slot(slot, data):
@@ -248,6 +250,15 @@ def write_slot(slot, data):
         XAssert(slot < get_entry_count()),
         GlobalBlob.write(slot * Int(SLOT_SIZE), data)
     ])
+
+@Subroutine(TealType.none)
+def write_system_slot(data):
+    return Seq(GlobalBlob.write(SYSTEM_SLOT_INDEX * Int(SLOT_SIZE), data))
+
+
+@Subroutine(TealType.uint64)
+def is_test_mode():
+    return FLAG_TEST_MODE & GetByte(read_slot(SYSTEM_SLOT_INDEX), Int(1))
 
 
 @Subroutine(TealType.none)
@@ -309,7 +320,6 @@ def publish_data(asa_id, attestation_data, slot):
         write_slot(slot, packed_price_data.load()),
     ])
 
-
 def store():
     # * Sender must be owner
     # * This must be part of a transaction group
@@ -325,6 +335,7 @@ def store():
     attestation_data = ScratchVar(TealType.bytes)
     asa_id = ScratchVar(TealType.uint64)
     slot = ScratchVar(TealType.uint64)
+    slot_data = ScratchVar(TealType.bytes)
 
     i = ScratchVar(TealType.uint64)
     op_pool = OpPool()
@@ -336,11 +347,12 @@ def store():
         pyth_payload.store(PYTH_PAYLOAD),
 
         # If testing mode is active, ignore group checks
-
-        XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), Global.group_size() > Int(1))),
-        XAssert(Txn.application_args.length() == Int(3)),
-        XAssert(is_creator()),
-        XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), check_group_tx())),
+        If(is_test_mode() == Int(0)).Then(Seq(
+            XAssert(Global.group_size() > Int(1))),
+            XAssert(Txn.application_args.length() == Int(3)),
+            XAssert(is_creator()),
+            XAssert(check_group_tx())
+        ),
         
         # check magic header and version.
         # We dont check minor version as we expect minor-version changes to NOT affect
@@ -380,7 +392,6 @@ def store():
                 asa_id.store(ExtractUint64(ASAID_SLOT_ARRAY, i.load() * ASAID_SLOT_TUPLE_SIZE)),
 
                 # Ensure status == 1
-                
                 If(Extract(attestation_data.load(), BLOCK1_STATUS_OFFSET, BLOCK1_STATUS_LEN) != Bytes("base16", "0x01"),
                     Log(Concat(Bytes("PRICE_DISABLED:"), Itob(asa_id.load()))),
 
@@ -391,9 +402,12 @@ def store():
                         If(asa_id.load() == IGNORE_ATTESTATION, Continue()),
 
                         # Slot must be allocated already for this ASA
-                        XAssert(ExtractUint64(read_slot(slot.load()), Int(0)) == asa_id.load()),
+                        slot_data.store(read_slot(slot.load())),
+                        XAssert(ExtractUint64(slot_data.load(), Int(0)) == asa_id.load()),
 
-                        # TODO: If an attestation has an older timestamp must be ignored.
+                        # If an attestation has an older timestamp must be ignored.
+                        If(ExtractUint64(slot_data.load(), PUB_TIME_FIELD_OFFSET) < ExtractUint64(attestation_data.load(), PUB_TIME_FIELD_OFFSET),
+                            Log(Concat(Bytes("PRICE_IGNORED_OLD:"), Itob(asa_id.load())))),
 
                         # Valid status,  continue publication....
                         publish_data(asa_id.load(), attestation_data.load(), slot.load())
@@ -431,6 +445,18 @@ def reset():
         Approve()
     ])
 
+def set_flags():
+    #
+    # Sets configuration flags 
+    #
+    sys_slot = ScratchVar(TealType.bytes)
+    return Seq(
+        XAssert(is_creator()),
+        sys_slot.store(SetByte(read_slot(SYSTEM_SLOT_INDEX), Int(1), Btoi(FLAGS_ARG) & Int(0xFF))),
+        write_system_slot(sys_slot.load()),
+        Approve()
+    )
+
 def pricecaster_program():
     handle_create = Return(bootstrap())
     handle_update = Return(is_creator())
@@ -440,6 +466,7 @@ def pricecaster_program():
         [METHOD == Bytes("store"), store()],
         [METHOD == Bytes("alloc"), alloc_new_slot()],
         [METHOD == Bytes("reset"), reset()],
+        [METHOD == Bytes("setflags"), set_flags()]
     )
     return Seq([
         # XAssert(Txn.rekey_to() == Global.zero_address()),
@@ -476,7 +503,7 @@ if __name__ == "__main__":
 
     with open(approval_outfile, "w") as f:
         compiled = compileTeal(pricecaster_program(),
-                               mode=Mode.Application, version=7, optimize=optimize_options)
+                               mode=Mode.Application, version=8, assembleConstants=True, optimize=optimize_options)
         f.write(compiled)
 
     print("Written to " + approval_outfile)
@@ -484,7 +511,7 @@ if __name__ == "__main__":
 
     with open(clear_state_outfile, "w") as f:
         compiled = compileTeal(clear_state_program(),
-                               mode=Mode.Application, version=7)
+                               mode=Mode.Application, version=8)
         f.write(compiled)
 
     print("Written to " + clear_state_outfile)
