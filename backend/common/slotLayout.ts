@@ -27,13 +27,32 @@ import { bootstrapSlotLayoutInfo } from '../../settings/bootSlotLayout'
 import { PricecasterDatabase } from '../engine/Database'
 import { PythPriceServiceFetcher } from '../fetcher/pythPriceServiceFetcher'
 
+const readline = require('readline')
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+})
+
+function ask (questionText: string) {
+  return new Promise((resolve) => {
+    rl.question(questionText, (input: unknown) => resolve(input))
+  })
+}
+
+async function askCriticalStep (s: string) {
+  const answer = await ask(s + '\nType YES to continue, anything else to abort.')
+  if (answer !== 'YES') {
+    console.warn('Aborted by user.')
+    process.exit(1)
+  }
+}
 export class SlotLayout {
   private pclib: PricecasterLib
   private fetcher!: PythPriceServiceFetcher
   constructor (readonly algodClient: algosdk.Algodv2,
-      readonly ownerAccount: Account,
-      readonly settings: IAppSettings,
-      readonly pcDatabase: PricecasterDatabase) {
+    readonly ownerAccount: Account,
+    readonly settings: IAppSettings,
+    readonly pcDatabase: PricecasterDatabase) {
     this.pclib = new PricecasterLib(algodClient, this.ownerAccount.addr)
     this.pclib.setAppId(PRICECASTER_CI, this.settings.apps.pricecasterAppId)
   }
@@ -42,13 +61,16 @@ export class SlotLayout {
     let ok = true
     try {
       if (process.env.BOOTSTRAPDB === '1') {
+        await askCriticalStep('\nThis will clear contract onchain state and database!')
         Logger.warn('Bootstrapping process starting')
         this.createSlotLayoutTable(true)
         await this.resetContractSlots()
         await this.bootstrapSlotLayout(bootstrapSlotLayoutInfo[this.settings.network])
       } else if (process.env.RESETDB === '1') {
+        await askCriticalStep('\nThis will reset local database. Inconsistency with onchain contract may arise.')
         this.createSlotLayoutTable(true)
       } else if (process.env.RESETCONTRACT === '1') {
+        await askCriticalStep('\nThis will clear contract onchain state. Inconsistency with local database may arise.')
         this.resetContractSlots()
       }
 
@@ -95,12 +117,14 @@ export class SlotLayout {
    * Build the layout table from prepared bootstraping info
    */
   private async bootstrapSlotLayout (layout: SlotInfo[]) {
-    Logger.info('Bootstrapped slot layout')
-
+    if (!layout) {
+      throw new Error(`There is no slot layout available for network '${this.settings.network}'`)
+    }
     for (const e of layout) {
       const slotId = await this.allocSlot(e.asaId, e.priceId)
       Logger.info(`Added slot ${slotId} for ASA ID: ${e.asaId}, PriceId: ${e.priceId}`)
     }
+    Logger.info('Bootstrapped slot layout')
   }
 
   /**
