@@ -31,6 +31,7 @@ export interface IAppSettings extends Record<string, unknown> {
     priceService: {
       mainnet: string,
       testnet: string,
+      devnet: string,
       pollIntervalMs: number,
       requestBlockSize: number
     },
@@ -63,10 +64,10 @@ export interface IAppSettings extends Record<string, unknown> {
   storage: {
     db: string
   },
-  network: 'testnet' | 'mainnet'
+  network: 'testnet' | 'mainnet' | 'devnet'
 }
 
-const netUpper = (settings: IAppSettings) => settings.network.toUpperCase() as 'MAINNET' | 'TESTNET'
+const netUpper = (settings: IAppSettings) => settings.network.toUpperCase() as 'MAINNET' | 'TESTNET' | 'DEVNET'
 
 export function getWormholeCoreAppId (settings: IAppSettings) {
   return CONTRACTS[netUpper(settings)].algorand.core

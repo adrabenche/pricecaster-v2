@@ -45,7 +45,7 @@ function signCallback (sender: string, tx: algosdk.Transaction) {
   return tx.signTxn(algosdk.mnemonicToSecretKey(globalMnemo).sk)
 }
 
-async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreId: string) {
+async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreId: string, testModeEnable: boolean) {
   const pclib = new PricecasterLib(algodClient, fromAddress)
 
   const out = spawnSync(PYTHON_BIN, [config.sources.pricecaster_pyteal])
@@ -60,7 +60,7 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
   console.log(out.output.toString())
 
   console.log('Deploying Pricecaster V2 Application...')
-  const txId = await pclib.createPricecasterApp(fromAddress, parseInt(coreId), false, signCallback, 2000)
+  const txId = await pclib.createPricecasterApp(fromAddress, parseInt(coreId), testModeEnable, signCallback, 2000)
   console.log('txId: ' + txId)
   const txResponse = await pclib.waitForTransactionResponse(txId)
   const pkAppId = pclib.appIdFromCreateAppResponse(txResponse)
@@ -75,21 +75,23 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
 }
 
 (async () => {
-  console.log('\nPricecaster v2   Version 7.0  Apps Deployment Tool')
+  console.log('\nPricecaster v2   Version 7.1  Algorand Application Deployment Tool')
   console.log('Copyright 2022 Randlabs Inc.\n')
 
-  if (process.argv.length !== 5) {
+  if (process.argv.length !== 6) {
     console.log('Usage: deploy <coreid> <network> <keyfile>\n')
     console.log('where:\n')
     console.log('coreid                 The application id of the Wormhole core contract')
     console.log('network                Testnet, betanet, mainnet or dev (look in deploy.config.ts)')
     console.log('keyfile                Secret file containing deployer signing key mnemonic')
+    console.log('testmode               Deploy test-mode contract to skip VAA/security checks')
     exit(0)
   }
 
   const coreId = process.argv[2]
   const network: string = process.argv[3]
   const keyfile: string = process.argv[4]
+  const testmode: string = process.argv[5] 
 
   const netconfig = config.networks[network]
   if (config === undefined) {
@@ -101,17 +103,19 @@ async function startOp (algodClient: algosdk.Algodv2, fromAddress: string, coreI
     globalMnemo = fs.readFileSync(keyfile).toString().trim()
     const algodClient = new algosdk.Algodv2(netconfig.token, netconfig.api, netconfig.port)
     const fromAddress = algosdk.mnemonicToSecretKey(globalMnemo).addr
+    const testModeEnable = Number(testmode) > 0
 
     console.log('Parameters for deployment: ')
     console.log('From: ' + fromAddress)
     console.log('Network: ' + network)
     console.log('Wormhole Core AppId: ' + coreId)
+    console.log('Testmode: ' + testModeEnable)
     const answer = await ask('\nEnter YES to confirm parameters, anything else to abort. ')
     if (answer !== 'YES') {
       console.warn('Aborted by user.')
       exit(1)
     }
-    await startOp(algodClient, fromAddress, coreId)
+    await startOp(algodClient, fromAddress, coreId, testModeEnable)
   } catch (e: any) {
     console.error('(!) Deployment Failed: ' + e.toString())
   }

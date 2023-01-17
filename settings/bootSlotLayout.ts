@@ -21,7 +21,8 @@
 import { SlotInfo } from '../backend/common/basetypes'
 export type BootstrapSlotLayout = {
   mainnet: SlotInfo[],
-  testnet: SlotInfo[]
+  testnet: SlotInfo[],
+  devnet: SlotInfo[]
 }
 const slotLayoutTestnet: SlotInfo[] = [
   {
@@ -50,7 +51,15 @@ const slotLayoutTestnet: SlotInfo[] = [
   }
 ]
 
+const slotLayoutDevnet: SlotInfo[] = [
+  {
+    priceId: '08f781a893bc9340140c5f89c8a96f438bcfae4d1474cc0f688e3a52892c7318', // ALGO/USD
+    asaId: 0
+  }
+]
+
 export const bootstrapSlotLayoutInfo: BootstrapSlotLayout = {
   mainnet: [],
-  testnet: slotLayoutTestnet
+  testnet: slotLayoutTestnet,
+  devnet: slotLayoutDevnet
 }

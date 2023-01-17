@@ -21,7 +21,7 @@ v6.5 - Use OpPull for budget maximization.
        Reject publications with Status != 1
        Modify normalization price handling.
 v7.0 - C3-Testnet deployment version: Use linear-addressable global space for entries.
-v7.1 - Configuration flags. Remove of old TMPL_I_TESTING template parameter.
+v7.1 - Configuration flags.  Old publications are discarded.
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the Wormhole VAA verification transaction group.
@@ -146,10 +146,6 @@ IGNORE_ATTESTATION = Int(0xFFFFFFFFFFFFFFFF)
 ENTRY_NOT_FOUND    = Int(0xFFFFFFFFFFFFFF00)
 GLOBAL_SPACE_FULL  = Int(0xFFFFFFFFFFFFFF01)
 
-# Configuration flag bits positions
-
-FLAG_TEST_MODE = Int(128)
-
 def XAssert(cond):
     return Assert(And(cond, Int(currentframe().f_back.f_lineno)))
 
@@ -198,7 +194,7 @@ def check_group_tx():
                     )))
                 ])
         ),
-        XAssert(is_corecall.load() == Int(1)),
+        XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), is_corecall.load() == Int(1))),
         Return(Int(1))
     ])
 
@@ -256,9 +252,9 @@ def write_system_slot(data):
     return Seq(GlobalBlob.write(SYSTEM_SLOT_INDEX * Int(SLOT_SIZE), data))
 
 
-@Subroutine(TealType.uint64)
-def is_test_mode():
-    return FLAG_TEST_MODE & GetByte(read_slot(SYSTEM_SLOT_INDEX), Int(1))
+#@Subroutine(TealType.uint64)
+#def is_test_mode():
+#    return FLAG_TEST_MODE & GetByte(read_slot(SYSTEM_SLOT_INDEX), Int(1))
 
 
 @Subroutine(TealType.none)
@@ -347,12 +343,10 @@ def store():
         pyth_payload.store(PYTH_PAYLOAD),
 
         # If testing mode is active, ignore group checks
-        If(is_test_mode() == Int(0)).Then(Seq(
-            XAssert(Global.group_size() > Int(1))),
-            XAssert(Txn.application_args.length() == Int(3)),
-            XAssert(is_creator()),
-            XAssert(check_group_tx())
-        ),
+        XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), Global.group_size() > Int(1))),
+        XAssert(Txn.application_args.length() == Int(3)),
+        XAssert(is_creator()),
+        XAssert(Or(Tmpl.Int("TMPL_I_TESTING"), check_group_tx())),
         
         # check magic header and version.
         # We dont check minor version as we expect minor-version changes to NOT affect

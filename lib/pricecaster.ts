@@ -19,7 +19,6 @@
  */
 
 import algosdk from 'algosdk'
-import _ from 'underscore'
 // eslint-disable-next-line camelcase
 import tools from '../tools/app-tools'
 const fs = require('fs')
@@ -360,11 +359,12 @@ export default class PricecasterLib {
        * Create the Pricekeeper application based on the default approval and clearState programs or based on the specified files.
        * @param  {String} sender account used to sign the createApp transaction
        * @param  {String} wormholeCore The application id of the Wormhole Core program associated.
+       * @param  {boolean} testMode Set to true to enable test mode (ignore transaction format check)
        * @param  {Function} signCallback callback with prototype signCallback(sender, tx) used to sign transactions
        * @return {String} transaction id of the created application
        */
-  async createPricecasterApp (sender: string, wormholeCore: number, signCallback: SignCallback, fee?: number): Promise<any> {
-    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback, [], undefined, fee)
+  async createPricecasterApp (sender: string, wormholeCore: number, testMode: boolean, signCallback: SignCallback, fee?: number): Promise<any> {
+    return this.createApp(sender, PRICECASTER_CI, [algosdk.encodeUint64(wormholeCore)], signCallback, [['TMPL_I_TESTING', testMode ? '1' : '0']], undefined, fee)
   }
 
   /**
