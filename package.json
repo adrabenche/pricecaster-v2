@@ -10,7 +10,9 @@
     "prepare": "npm run build",
     "prepack": "npm run build",
     "start": "npm run compile && cross-env PRICECASTER_SETTINGS=./settings/settings.js node dist/backend/main.js",
+    "start-dev": "npm run compile && cross-env PRICECASTER_SETTINGS=./settings/settings-dev.js node dist/backend/main.js",
     "bootstrap": "npm run compile && cross-env BOOTSTRAPDB=1 PRICECASTER_SETTINGS=./settings/settings.js node dist/backend/main.js",
+    "bootstrap-dev": "npm run compile && cross-env BOOTSTRAPDB=1 RESETSTATS=1 PRICECASTER_SETTINGS=./settings/settings-dev.js node dist/backend/main.js",
     "start-production": "npm run compile && cross-env NODE_ENV='production' PRICECASTER_SETTINGS=./settings/settings.js node dist/backend/main.js",
     "test-sc": "mocha -r ts-node/register test/test-sc.ts --timeout 60000"
   },

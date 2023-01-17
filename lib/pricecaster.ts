@@ -101,7 +101,7 @@ export type PriceSlotData = {
 }
 
 export type AsaIdSlot = { asaid: number, slot: number }
-export type SystemSlotInfo = { entryCount: number }
+export type SystemSlotInfo = { entryCount: number, flags: number }
 
 const GLOBAL_SLOT_SIZE = 92
 const SYSTEM_SLOT_INDEX = 85
@@ -641,7 +641,8 @@ export default class PricecasterLib {
   async readSystemSlot (): Promise<SystemSlotInfo> {
     const sysSlotBuf = await this.readSlot(SYSTEM_SLOT_INDEX)
     return {
-      entryCount: sysSlotBuf.readUInt8(0)
+      entryCount: sysSlotBuf.readUInt8(0),
+      flags: sysSlotBuf.readUInt8(1)
     }
   }
 

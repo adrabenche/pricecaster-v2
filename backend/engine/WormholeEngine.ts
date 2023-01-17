@@ -86,14 +86,14 @@ export class WormholeClientEngine implements IEngine {
 
     const initResult = await this.slotLayout.init()
 
+    Logger.info('Starting statistics module...')
+    this.stats = new Statistics(this.settings, db)
+
     // When bootstrapping, bail out
     if (!initResult || process.env.BOOTSTRAPDB === '1') {
       Logger.info('Bailing out, bye')
       process.exit(0)
     }
-
-    Logger.info('Starting statistics module...')
-    this.stats = new Statistics(this.settings, db)
 
     Logger.info('Starting Rest API module...')
     this.restApi = new RestApi(this.settings, this.slotLayout, this.stats)

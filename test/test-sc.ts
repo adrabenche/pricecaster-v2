@@ -24,6 +24,9 @@ const assetMap1 = [
   { decimals: 3, assetId: undefined, samplePrice: 10000, exponent: -4, slot: undefined }
 ]
 
+const SYSTEM_SLOT_INDEX = 85
+const SLOT_SIZE = 92
+
 // ===============================================================================================================
 
 async function createPricecasterApp (coreId: number, testMode: boolean) {
@@ -39,7 +42,7 @@ async function createPricecasterApp (coreId: number, testMode: boolean) {
   console.log(out.output.toString())
 
   console.log('Deploying Pricecaster V2 Application...')
-  const txId = await pclib.createPricecasterApp(ownerAccount.addr, coreId, testMode, signCallback, 2000)
+  const txId = await pclib.createPricecasterApp(ownerAccount.addr, coreId, testMode, signCallback, 3000)
   console.log('txId: ' + txId)
   const txResponse = await pclib.waitForTransactionResponse(txId)
   const pkAppId = pclib.appIdFromCreateAppResponse(txResponse)
@@ -310,16 +313,7 @@ describe('Pricecaster App Tests', function () {
   })
 
   it('Must fail to call store without Testing bit set', async function () {
-    await testFailCase(19, 1, 0, 50000000, undefined, 346)
-  })
-
-  it('Must create pricecaster V2 app with Core app id set, Test Mode Enabled', async function () {
-    const dummyCoreId = 10001
-    await createPricecasterApp(dummyCoreId, true)
-    console.log('    - [Created pricecaster appId: %d]', PRICECASTER_CI.appId)
-
-    const thisCoreId = await tools.readAppGlobalStateByKey(algodClient, PRICECASTER_CI.appId, ownerAccount.addr, 'coreid')
-    expect(thisCoreId).to.equal(dummyCoreId)
+    await testFailCase(19, 1, 0, 50000000, undefined, 336)
   })
 
   it('Must fail to call setflags from non-creator account', async function () {
@@ -337,12 +331,27 @@ describe('Pricecaster App Tests', function () {
 
   it('Must set setflags (testmode) by operator', async function () {
     const params = await algodClient.getTransactionParams().do()
-    const tx = pclib.makeSetFlagsTx(ownerAccount.addr, 128, params)
+    const tx = pclib.makeSetFlagsTx(ownerAccount.addr, 0x7f, params)
     const { txId } = await algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()
     const txResponse = await pclib.waitForTransactionResponse(txId)
     expect(txResponse['pool-error']).to.equal('')
+    const ssi = await pclib.readSystemSlot()
+    expect(ssi.flags).to.equal(0x7f)
   })
 
+  it('Must create pricecaster V2 app with Core app id set, Test Mode Enabled', async function () {
+    const dummyCoreId = 10001
+    await createPricecasterApp(dummyCoreId, true)
+    console.log('    - [Created pricecaster appId: %d]', PRICECASTER_CI.appId)
+
+    const thisCoreId = await tools.readAppGlobalStateByKey(algodClient, PRICECASTER_CI.appId, ownerAccount.addr, 'coreid')
+    expect(thisCoreId).to.equal(dummyCoreId)
+  })
+
+  it('Must have system flags set to 0x80 with Test deployment', async function() {
+    const ssi = await pclib.readSystemSlot()
+    expect(ssi.flags).to.equal(0x80)
+  })
   it('Must ignore payload with status != 1 and log message', async function () {
     const assetMap = [
       { decimals: 5, assetId: undefined, samplePrice: 10000, exponent: -8, slot: undefined }
@@ -368,7 +377,7 @@ describe('Pricecaster App Tests', function () {
   })
 
   it('Must fail to store unallocated slot 0', async function () {
-    await testFailCase(19, 1, 0, 0, undefined, 246)
+    await testFailCase(19, 1, 0, 0, undefined, 236)
   })
 
   it('Must succeed to allocate slot 0 for new ASA ID', async function () {
@@ -384,10 +393,14 @@ describe('Pricecaster App Tests', function () {
     expect(txResponse.logs[0]).to.deep.equal(Buffer.concat([Buffer.from('ALLOC@'), Buffer.from(algosdk.encodeUint64(ec - 1))]))
 
     asaInSlot[0] = assetMap[0].assetId!
+
+    // Make sure flags were untouched
+    const flags = (await pclib.readSystemSlot()).flags
+    expect(flags).to.equal(0x80)
   })
 
   it('Must fail to store data in incorrect slot', async function () {
-    await testFailCase(19, 1, 0, 85000000, undefined, 400)
+    await testFailCase(19, 1, 0, 85000000, undefined, 390)
   })
 
   it('Must handle one attestation at index 0 with enough opcode budget', async function () {
@@ -501,7 +514,7 @@ describe('Pricecaster App Tests', function () {
       params)
 
     // eslint-disable-next-line prefer-regex-literals
-    const regex = new RegExp('logic eval error.*opcodes=pushint 369')
+    const regex = new RegExp('logic eval error.*opcodes=pushint 359')
     await expect(algodClient.sendRawTransaction(tx.signTxn(ownerAccount.sk)).do()).to.be.rejectedWith(regex)
   })
 
@@ -552,7 +565,11 @@ describe('Pricecaster App Tests', function () {
     expect(txResponse['pool-error']).to.equal('')
 
     const global = await pclib.fetchGlobalSpace()
-    expect(global).to.deep.equal(Buffer.alloc(127 * 63))
+    const buf = Buffer.alloc(127 * 63)
+    // Flags must be present, but entry count set to zero
+    buf.writeUint8(0, SLOT_SIZE * SYSTEM_SLOT_INDEX)
+    buf.writeUint8(0x80, SLOT_SIZE * SYSTEM_SLOT_INDEX + 1)
+    expect(global).to.deep.equal(buf)
   })
 
   it('Must fail to store from non-creator account', async function () {

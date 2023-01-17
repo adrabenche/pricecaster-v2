@@ -104,7 +104,7 @@ The system slot has the following organization:
 | Field | Explanation | Size (bytes) |
 |-------|-------------|--------------|
 | Entry count | The number of allocated slots | 1 |
-| Config flags | A set of configuration flags. See below |
+| Config flags | A set of configuration flags. See below | 1 |
 | Reserved |  Reserved for future use | 90 |
 
 
@@ -122,10 +122,10 @@ The **setflags** app call is used by the operator to change operating flags. Thi
 | | | +---------------- Reserved
 | | +------------------ Reserved
 | +-------------------- Reserved
-+---------------------- Enable test mode (bypass VAA/group checks)
++---------------------- System Use (Testing-mode deployment)
 ```
 
-The TEST MODE bit must be used **ONLY** in development mode, as it disables all security and VAA signature checks.
+Bit 7 is set by system and cannot be set by operator.
 
 ### Price slots
 
@@ -206,7 +206,7 @@ Use the deployment tools in `tools` subdirectory.
 For example, using `deploy` with sample output: 
 
 ```
-$ npx ts-node  tools/deploy.ts 86525623 testnet keys/owner.key
+$ npx ts-node  tools/deploy.ts 86525623 testnet keys/owner.key 0
 
 
 Pricecaster v2   Version 7.0  Apps Deployment Tool
@@ -216,6 +216,7 @@ Parameters for deployment:
 From: 4NM56GAFQEXSEVZCLAUA6WXFGTRD6ZCEGNLGT2LGLY25CHA6RLGHQLPJVM
 Network: testnet
 Wormhole Core AppId: 86525623
+TestMode: false
 
 Enter YES to confirm parameters, anything else to abort. YES
 ,Pricecaster V2 TEAL Program     Version 7.0, (c) 2022-23 Randlabs, inc.
@@ -363,13 +364,6 @@ The Pricecaster backend will run in a continuous loop to:
 * Fetch one or more VAAs containing products prices according to the Slot Layout.  A VAA typically contains 5 attestations of prices, which may contain one or more of the specified prices. This means that if we ask for five prices they may be contained in one VAA payload, or to be distributed in five VAAs.  
 * Build a transaction group using the Wormhole SDK to verify the VAA and call the **store** application call.
 * Store statistics for monitoring operation.
-
-
-## Rest API
-
-The backend offers a REST API with the following endpoints.
-
-
 
 ## Tests
 

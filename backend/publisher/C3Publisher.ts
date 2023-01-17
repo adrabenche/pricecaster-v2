@@ -26,7 +26,7 @@ import { getPriceIdsInVaa } from '../common/pythPayload'
 import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { SlotLayout } from '../common/slotLayout'
 import _ from 'underscore'
-import PricecasterLib, { PRICECASTER_CI, AsaIdSlot } from '../../lib/pricecaster'
+import PricecasterLib, { PRICECASTER_CI, AsaIdSlot, SystemSlotInfo } from '../../lib/pricecaster'
 import { IPublisher } from './IPublisher'
 import { Statistics } from 'backend/engine/Stats'
 
@@ -36,6 +36,7 @@ export class PricecasterPublisher implements IPublisher {
   private pclib: PricecasterLib
   private txParams!: SuggestedParams
   private cyclesToNextTxParamsUpdate: number
+  private testModeFlag: boolean | undefined = undefined
   constructor (readonly algodv2: Algodv2,
     readonly senderAccount: algosdk.Account,
     readonly stats: Statistics,
@@ -50,8 +51,14 @@ export class PricecasterPublisher implements IPublisher {
     this.cyclesToNextTxParamsUpdate = 0
   }
 
-  start () {
+  async start () {
     this.active = true
+    const ssi = await this.pclib.readSystemSlot()
+    console.log(ssi)
+    this.testModeFlag = (ssi.flags & 128) !== 0
+    if (this.testModeFlag) {
+      Logger.warn('Test-Mode deployed contract. Security and VAA verification checks will be bypassed.')
+    }
   }
 
   stop () {
@@ -67,8 +74,11 @@ export class PricecasterPublisher implements IPublisher {
     if (this.cyclesToNextTxParamsUpdate++ === 0) {
       Logger.info('Refreshing transaction network parameters')
       this.txParams = await this.algodClient.getTransactionParams().do()
+      this.txParams.lastRound -= this.settings.algo.getNetworkTxParamsCycleInterval + 1
     }
-
+    else {
+      this.txParams.lastRound++
+    }
     const publishCalls: Promise<any>[] = []
     for (const vaa of vaaList) {
       publishCalls.push(this.submit(this.txParams, vaa))
@@ -110,17 +120,16 @@ export class PricecasterPublisher implements IPublisher {
     const vaaParsed = parseVaa(vaa)
     const priceIdsInVaa = getPriceIdsInVaa(vaaParsed.payload)
     const asaIdSlots = this.buildAsaIdSlots(priceIdsInVaa)
-
-    // console.log(asaIdSlots)
-
     const txs: TransactionSignerPair[] = []
     const signedGroupedTxns: Uint8Array[] = []
-    const t0 = _.now()
-    const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(getWormholeCoreAppId(this.settings)),
-      new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.settings.apps.pricecasterAppId))
-    // console.log(`submitVaaHeader time: ${_.now() - t0}ms`)
 
-    txs.push(...submitVaaState.txs)
+    if (!this.testModeFlag) {
+      const submitVaaState = await submitVAAHeader(this.algodClient, BigInt(getWormholeCoreAppId(this.settings)),
+        new Uint8Array(vaa), this.senderAccount.addr, BigInt(this.settings.apps.pricecasterAppId))
+
+      txs.push(...submitVaaState.txs)
+    }
+
     txParams.fee = 2000 * (priceIdsInVaa.length - 1)
     const tx = this.pclib.makePriceStoreTx(this.senderAccount.addr,
       asaIdSlots,

@@ -153,16 +153,6 @@ def XAssert(cond):
 def is_creator():
     return Txn.sender() == Global.creator_address()
 
-@Subroutine(TealType.uint64)
-# Arg0: Bootstrap with the authorized VAA Processor appid.
-def bootstrap():
-    op_pool = OpPool()
-    return Seq([
-        op_pool.maximize_budget(Int(1000)),
-        App.globalPut(Bytes("coreid"), Btoi(Txn.application_args[0])),
-        GlobalBlob.zero(),
-        Approve()
-    ])
 
 
 @Subroutine(TealType.uint64)
@@ -432,22 +422,46 @@ def reset():
     # Resets all contract info to zero
     #
     op_pool = OpPool()
+    sys_flag = ScratchVar(TealType.uint64)
     return Seq([
         XAssert(is_creator()),
-        op_pool.maximize_budget(Int(1000)),
+        op_pool.maximize_budget(Int(2000)),
+        sys_flag.store(GetByte(read_slot(SYSTEM_SLOT_INDEX), Int(1))),
         GlobalBlob.zero(),
+        GlobalBlob.set_byte(SYSTEM_SLOT_INDEX * Int(SLOT_SIZE) + Int(1), sys_flag.load()),
         Approve()
     ])
+
+@Subroutine(TealType.none)
+def set_sys_flag(flag):
+    sys_slot = ScratchVar(TealType.bytes)
+    return Seq(
+        sys_slot.store(SetByte(read_slot(SYSTEM_SLOT_INDEX), Int(1), flag & Int(0xFF))),
+        write_system_slot(sys_slot.load()),
+    )
 
 def set_flags():
     #
     # Sets configuration flags 
     #
-    sys_slot = ScratchVar(TealType.bytes)
     return Seq(
         XAssert(is_creator()),
-        sys_slot.store(SetByte(read_slot(SYSTEM_SLOT_INDEX), Int(1), Btoi(FLAGS_ARG) & Int(0xFF))),
-        write_system_slot(sys_slot.load()),
+        # mask-out the testing mode set in bootstrap call
+        set_sys_flag(Int(0x7F) & Btoi(FLAGS_ARG)),
+        Approve()
+    )
+
+@Subroutine(TealType.uint64)
+# Arg0: Bootstrap with the authorized VAA Processor appid.
+def bootstrap():
+    op_pool = OpPool()
+    return Seq(
+        op_pool.maximize_budget(Int(2000)),
+        App.globalPut(Bytes("coreid"), Btoi(Txn.application_args[0])),
+        GlobalBlob.zero(),
+
+        # Enable the testing-mode flag.
+        If(Tmpl.Int("TMPL_I_TESTING"), set_sys_flag(Int(128))),
         Approve()
     )
 
