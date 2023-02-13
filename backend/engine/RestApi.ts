@@ -33,13 +33,13 @@ type AssetRegisterBody = {
 export class RestApi {
   private server: FastifyInstance
 
-  constructor(readonly settings: IAppSettings,
+  constructor (readonly settings: IAppSettings,
     readonly slotLayout: SlotLayout,
     readonly stats: Statistics) {
     this.server = Fastify({ logger: true })
   }
 
-  async init() {
+  async init () {
     this.server.get('/stats', async (req, reply) => {
       return this.stats.getTxStats()
     })
@@ -91,7 +91,7 @@ export class RestApi {
     await this.server.listen({ port: this.settings.rest.port })
   }
 
-  async stop() {
+  async stop () {
     Logger.info('Shutting down Rest API server...')
     await this.server.close()
   }

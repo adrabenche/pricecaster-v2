@@ -26,7 +26,7 @@ import { getPriceIdsInVaa } from '../common/pythPayload'
 import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { SlotLayout } from '../common/slotLayout'
 import _ from 'underscore'
-import PricecasterLib, { PRICECASTER_CI, AsaIdSlot, SystemSlotInfo } from '../../lib/pricecaster'
+import PricecasterLib, { PRICECASTER_CI, AsaIdSlot } from '../../lib/pricecaster'
 import { IPublisher } from './IPublisher'
 import { Statistics } from 'backend/engine/Stats'
 
@@ -75,8 +75,7 @@ export class PricecasterPublisher implements IPublisher {
       Logger.info('Refreshing transaction network parameters')
       this.txParams = await this.algodClient.getTransactionParams().do()
       this.txParams.lastRound -= this.settings.algo.getNetworkTxParamsCycleInterval + 1
-    }
-    else {
+    } else {
       this.txParams.lastRound++
     }
     const publishCalls: Promise<any>[] = []

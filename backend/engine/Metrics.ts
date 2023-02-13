@@ -23,7 +23,7 @@ export function getMetrics (stats: Statistics): Metric[] {
   return [
     new Gauge(
       {
-        name: 'cycleTime',
+        name: 'pricecaster_cycle_time',
         help: 'The time elapsed for the last cycle of publishing the entire set of prices.',
         collect () {
           this.set(stats.getLastCycleTime())
@@ -32,7 +32,7 @@ export function getMetrics (stats: Statistics): Metric[] {
     ),
     new Gauge(
       {
-        name: 'successTxCount',
+        name: 'pricecaster_success_tx_count',
         help: 'The number of successful Algorand transaction groups issued (one for each VAA).',
         collect () {
           this.set(stats.getSuccessTxCount())
@@ -41,19 +41,19 @@ export function getMetrics (stats: Statistics): Metric[] {
     ),
     new Gauge(
       {
-        name: 'failedTxCount',
+        name: 'pricecaster_failed_tx_count',
         help: 'The number of failed Algorand transaction groups',
         collect () {
-          this.set(stats.getSuccessTxCount())
+          this.set(stats.getFailedTxCount())
         }
       }
     ),
     new Gauge(
       {
-        name: 'totalFees',
+        name: 'pricecaster_total_fees',
         help: 'The total consumed fees',
         collect () {
-          this.set(stats.getTxStats().fees)
+          this.set(0)/* stats.getTxStats().fees */
         }
       }
     )

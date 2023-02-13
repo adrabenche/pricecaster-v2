@@ -38,6 +38,12 @@ export class PromClientApi {
   async init () {
     collectDefaultMetrics({ register: this.registry })
     getMetrics(this.stats).forEach(m => this.registry.registerMetric(m))
+
+    this.promServer.get('/metrics', async (req, res) => {
+      res.headers({ 'Content-Type': this.registry.contentType })
+      return res.send(await this.registry.metrics())
+    })
+
     await this.promServer.listen({ port: this.settings.prom.port })
   }
 

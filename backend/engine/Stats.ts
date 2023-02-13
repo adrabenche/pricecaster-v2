@@ -68,6 +68,10 @@ export class Statistics {
     return this.pcDatabase.getLastCycleTime()
   }
 
+  setLastCycleTime (t: number) {
+    this.pcDatabase.setLastCycleTime(t)
+  }
+
   getTxStats (): TxStats {
     return this.pcDatabase.getStats()
   }
