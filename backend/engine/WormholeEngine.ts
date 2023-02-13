@@ -30,6 +30,7 @@ import { Statistics } from './Stats'
 import { SlotLayout } from '../common/slotLayout'
 import { RestApi } from './RestApi'
 import { PricecasterDatabase } from './Database'
+import { PromClientApi } from './PromClient'
 const fs = require('fs')
 
 export type EngineSwitch = {
@@ -45,6 +46,7 @@ export class WormholeClientEngine implements IEngine {
   private slotLayout!: SlotLayout
   private shouldQuit: boolean
   private restApi!: RestApi
+  private promApi!: PromClientApi
   private engineSwitch: EngineSwitch = {
     publishEnable: false,
     refreshPriceIdLatch: true
@@ -63,6 +65,7 @@ export class WormholeClientEngine implements IEngine {
       this.fetcher.shutdown()
       await Logger.finalize()
       this.restApi.stop()
+      this.promApi.stop()
     }
   }
 
@@ -98,6 +101,10 @@ export class WormholeClientEngine implements IEngine {
     Logger.info('Starting Rest API module...')
     this.restApi = new RestApi(this.settings, this.slotLayout, this.stats)
     await this.restApi.init()
+
+    Logger.info('Starting Prometheus API module...')
+    this.promApi = new PromClientApi(this.settings, this.stats)
+    await this.promApi.init()
 
     if (this.settings.debug?.skipPublish) {
       Logger.warn('Using Null Publisher')
