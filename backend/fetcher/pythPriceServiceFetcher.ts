@@ -74,6 +74,7 @@ export class PythPriceServiceFetcher {
 
     const t1 = _.now() - t0
     Logger.debug(1, `Sent ${vaaList.flat().length} VAAs, total cycle time ${t1}ms. TX stats: ${this.stats.getSuccessTxCount()} ok, ${this.stats.getFailedTxCount()} failed`)
+    this.stats.setLastCycleTime(t1)
 
     if (this.active) {
       setTimeout(async () => { this.getVaas() }, this.settings.pyth.priceService.pollIntervalMs)

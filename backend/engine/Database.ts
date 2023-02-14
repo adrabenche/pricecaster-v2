@@ -61,7 +61,7 @@ export class PricecasterDatabase {
 
   createStatsTable () {
     Logger.info('Creating new Stats table')
-    this.prepareAndExec('CREATE TABLE Stats ( Id INTEGER, Success REAL, Failed REAL, AvgCycleTime REAL, AvgFees REAL, AvgCost REAL' +
+    this.prepareAndExec('CREATE TABLE Stats ( Id INTEGER, Success REAL, Failed REAL, AvgCycleTime REAL, LastCycleTime REAL, AvgFees REAL, AvgCost REAL' +
       'CONSTRAINT PRIMARY KEY CHECK (Id = 0));')
     this.prepareAndExec('INSERT INTO Stats (Id, Success, Failed, AvgCycleTime, AvgFees, AvgCost) VALUES (0, 0, 0, 0.0, 0.0, 0.0);')
   }
@@ -120,9 +120,14 @@ export class PricecasterDatabase {
       error: row.Failed,
       success: row.Success,
       avgCycleTime: row.AvgCycleTime,
+      lastCycleTime: row.lastCycleTime,
       fees: row.AvgFees,
       cost: row.Cost
     }
+  }
+
+  getLastCycleTime (): number {
+    return this.db.prepare('SELECT LastCycleTime FROM Stats').get().LastCycleTime
   }
 
   getAvgCycleTime (): number {
@@ -139,6 +144,11 @@ export class PricecasterDatabase {
 
   incSuccessTxCount () {
     (this.db.prepare('UPDATE Stats SET Success = Success + 1 WHERE id = 0')).run()
+  }
+
+  setLastCycleTime (t: number) {
+    console.log(t)
+    this.prepareAndExec('UPDATE Stats SET LastCycleTime = ? WHERE Id = 0', [t])
   }
 
   resetStats () {

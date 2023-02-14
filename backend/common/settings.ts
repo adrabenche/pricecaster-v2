@@ -24,6 +24,9 @@ import { Options } from '@randlabs/js-logger'
 export type Filter = { 'chain_id': number, 'emitter_address': string }
 
 export interface IAppSettings extends Record<string, unknown> {
+  prom: {
+    port: number
+  },
   rest: {
     port: number
   },

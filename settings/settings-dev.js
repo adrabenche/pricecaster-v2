@@ -31,16 +31,16 @@ module.exports = {
     debugLevel: 1
   },
   algo: {
-    token: '30F57B65916305B7761149D46E0E8D548A9123383E87A28341517F6C39CF20C7',
-    api: 'http://51.210.214.25/',
-    port: '8002',
+    token: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    api: 'http://localhost',
+    port: '4001',
     dumpFailedTx: false,
     dumpFailedTxDirectory: './dump',
     getNetworkTxParamsCycleInterval: 10,
   },
   apps: {
-    pricecasterAppId: 152524708,
-    ownerKeyFile: './keys/owner.key'
+    pricecasterAppId: 71,
+    ownerKeyFile: './dev.key'
   },
   debug: {
     skipPublish: false
@@ -48,5 +48,5 @@ module.exports = {
   storage: {
     db: './db/pricecaster.db'
   },
-  network: 'testnet'
+  network: 'devnet'
 }

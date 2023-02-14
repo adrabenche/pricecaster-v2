@@ -18,13 +18,16 @@
  * limitations under the License.
  */
 
+import { Gauge, Metric } from 'prom-client'
+import { collect } from 'underscore'
 import { IAppSettings } from '../common/settings'
 import { PricecasterDatabase } from './Database'
 
 export type TxStats = {
   error: number,
   success: number,
-  avgCycleTime: number
+  avgCycleTime: number,
+  lastCycleTime: number,
   fees: number,
   cost: number,
 }
@@ -59,6 +62,14 @@ export class Statistics {
 
   getAvgCycleTime (): number {
     return this.pcDatabase.getAvgCycleTime()
+  }
+
+  getLastCycleTime (): number {
+    return this.pcDatabase.getLastCycleTime()
+  }
+
+  setLastCycleTime (t: number) {
+    this.pcDatabase.setLastCycleTime(t)
   }
 
   getTxStats (): TxStats {
