@@ -79,3 +79,121 @@ export function getWormholeCoreAppId (settings: IAppSettings) {
 export function getWormholeBridgeAppId (settings: IAppSettings) {
   return CONTRACTS[netUpper(settings)].algorand.token_bridge
 }
+
+export function loadFromEnvironment (): IAppSettings {
+  const env = process.env
+
+  if (env.PROM_PORT === undefined) {
+    throw new Error('PROM_PORT is not defined')
+  }
+
+  if (env.REST_PORT === undefined) {
+    throw new Error('REST_PORT is not defined')
+  }
+
+  if (env.PYTH_PRICESERVICE_MAINNET === undefined) {
+    throw new Error('PYTH_PRICESERVICE_MAINNET is not defined')
+  }
+
+  if (env.PYTH_PRICESERVICE_TESTNET === undefined) {
+    throw new Error('PYTH_PRICESERVICE_TESTNET is not defined')
+  }
+
+  if (env.PYTH_PRICESERVICE_DEVNET === undefined) {
+    throw new Error('PYTH_PRICESERVICE_DEVNET is not defined')
+  }
+
+  if (env.PYTH_PRICESERVICE_POLL_INTERVAL_MS === undefined) {
+    throw new Error('PYTH_PRICESERVICE_POLL_INTERVAL_MS is not defined')
+  }
+
+  if (Number(env.PYTH_PRICESERVICE_POLL_INTERVAL_MS) === 0) {
+    throw new Error('PYTH_PRICESERVICE_POLL_INTERVAL_MS must be greater than 0')
+  }
+
+  if (env.PYTH_PRICESERVICE_REQUEST_BLOCKSIZE === undefined) {
+    throw new Error('PYTH_PRICESERVICE_REQUEST_BLOCKSIZE is not defined')
+  }
+
+  if (Number(env.PYTH_PRICESERVICE_REQUEST_BLOCKSIZE) === 0) {
+    throw new Error('PYTH_PRICESERVICE_REQUEST_BLOCKSIZE must be greater than 0')
+  }
+
+  if (env.LOG_APPNAME === undefined) {
+    throw new Error('LOG_APPNAME is not defined')
+  }
+
+  if (env.ALGO_API === undefined) {
+    throw new Error('ALGO_TOKEN is not defined')
+  }
+
+  if (env.ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL === undefined) {
+    throw new Error('ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL is not defined')
+  }
+
+  if (Number(env.ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL) === 0) {
+    throw new Error('ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL must be greater than 0')
+  }
+
+  if (env.APPS_PRICECASTER_APPID === undefined) {
+    throw new Error('APPS_PRICECASTER_APPID is not defined')
+  }
+
+  if (env.APPS_OWNER_KEY_FILE === undefined) {
+    throw new Error('APPS_OWNER_KEY_FILE is not defined')
+  }
+
+  if (env.STORAGE_DB === undefined) {
+    throw new Error('STORAGE_DB is not defined')
+  }
+
+  if (env.NETWORK === undefined) {
+    throw new Error('NETWORK is not defined')
+  }
+
+  if (env.NETWORK !== 'mainnet' && env.NETWORK !== 'testnet' && env.NETWORK !== 'devnet') {
+    throw new Error('NETWORK must be one of mainnet, testnet, devnet')
+  }
+
+  return {
+    prom: { port: Number(env.PROM_PORT) },
+    rest: { port: Number(env.REST_PORT) },
+    pyth: {
+      priceService: {
+        mainnet: env.PYTH_PRICESERVICE_MAINNET,
+        testnet: env.PYTH_PRICESERVICE_TESTNET,
+        devnet: env.PYTH_PRICESERVICE_DEVNET,
+        pollIntervalMs: Number(env.PYTH_PRICESERVICE_POLL_INTERVAL_MS),
+        requestBlockSize: Number(env.PYTH_PRICESERVICE_REQUEST_BLOCKSIZE)
+      }
+    },
+    log: {
+      appName: env.LOG_APPNAME,
+      disableConsoleLog: env.LOG_DISABLE_CONSOLE_LOG === 'true',
+      fileLog: {
+        dir: env.LOG_FILELOG_DIR,
+        daysToKeep: Number(env.LOG_FILELOG_DAYSTOKEEP)
+      },
+      debugLevel: Number(env.LOG_DEBUGLEVEL)
+    },
+    algo: {
+      token: env.ALGO_TOKEN ?? '',
+      api: env.ALGO_API,
+      port: env.ALGO_PORT ?? '',
+      dumpFailedTx: env.ALGO_DUMPFAILEDTX === 'true',
+      dumpFailedTxDirectory: env.ALGO_DUMPFAILEDTX_DIRECTORY,
+      getNetworkTxParamsCycleInterval: Number(env.ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL)
+    },
+    apps: {
+      pricecasterAppId: Number(env.APPS_PRICECASTER_APPID),
+      ownerKeyFile: env.APPS_OWNER_KEY_FILE
+    },
+    debug: {
+      skipPublish: env.DEBUG_SKIP_PUBLISH === 'true'
+    },
+    storage: {
+      db: env.STORAGE_DB
+    },
+    network: env.NETWORK as 'mainnet' | 'testnet' | 'devnet'
+  }
+}
