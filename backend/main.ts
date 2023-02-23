@@ -20,8 +20,8 @@
  * limitations under the License.
  */
 
-import * as Config from '@randlabs/js-config-reader'
-import { getWormholeBridgeAppId, getWormholeCoreAppId, IAppSettings } from './common/settings'
+// import * as Config from '@randlabs/js-config-reader'
+import { getWormholeBridgeAppId, getWormholeCoreAppId, IAppSettings, loadFromEnvironment } from './common/settings'
 import { exit } from 'process'
 import { WormholeClientEngine } from './engine/WormholeEngine'
 import * as Logger from '@randlabs/js-logger'
@@ -32,8 +32,7 @@ import { PC_COPYRIGHT, PC_VERSION } from './common/version'
 
   let settings: IAppSettings
   try {
-    await Config.initialize<IAppSettings>({ envVar: 'PRICECASTER_SETTINGS' })
-    settings = Config.get<IAppSettings>()
+    settings = loadFromEnvironment()
     await Logger.initialize(settings.log)
 
     Logger.info('Loaded settings. ')
