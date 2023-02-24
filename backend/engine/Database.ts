@@ -28,7 +28,7 @@ export class PricecasterDatabase {
   private db: Database.Database
 
   constructor (readonly settings: IAppSettings) {
-    const dbFullName = this.settings.storage.db + this.settings.network[0]
+    const dbFullName = this.settings.storage.db
     Logger.info('Database full path ' + dbFullName)
     this.db = new Database(dbFullName)
   }

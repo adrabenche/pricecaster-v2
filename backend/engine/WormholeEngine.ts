@@ -79,8 +79,7 @@ export class WormholeClientEngine implements IEngine {
     const algodClient = new Algodv2(this.settings.algo.token, this.settings.algo.api, this.settings.algo.port)
     let ownerAccount: algosdk.Account
     try {
-      const mnemo = fs.readFileSync(this.settings.apps.ownerKeyFile)
-      ownerAccount = algosdk.mnemonicToSecretKey((mnemo.toString()).trim())
+      ownerAccount = algosdk.mnemonicToSecretKey(this.settings.apps.ownerMnemonic.trim())
     } catch (e) {
       throw new Error('❌ Cannot get owner address: ' + e)
     }
