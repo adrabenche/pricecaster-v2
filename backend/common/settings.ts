@@ -58,7 +58,7 @@ export interface IAppSettings extends Record<string, unknown> {
   },
   apps: {
     pricecasterAppId: number,
-    ownerKeyFile: string,
+    ownerMnemonic: string
   },
   debug?: {
     skipPublish?: boolean,
@@ -139,8 +139,8 @@ export function loadFromEnvironment (): IAppSettings {
     throw new Error('APPS_PRICECASTER_APPID is not defined')
   }
 
-  if (env.APPS_OWNER_KEY_FILE === undefined) {
-    throw new Error('APPS_OWNER_KEY_FILE is not defined')
+  if (env.APPS_OWNER_KEY_MNEMO === undefined) {
+    throw new Error('APPS_OWNER_MNEMO is not defined')
   }
 
   if (env.STORAGE_DB === undefined) {
@@ -186,7 +186,7 @@ export function loadFromEnvironment (): IAppSettings {
     },
     apps: {
       pricecasterAppId: Number(env.APPS_PRICECASTER_APPID),
-      ownerKeyFile: env.APPS_OWNER_KEY_FILE
+      ownerMnemonic: env.APPS_OWNER_KEY_MNEMO
     },
     debug: {
       skipPublish: env.DEBUG_SKIP_PUBLISH === 'true'
