@@ -1,0 +1,19 @@
+[Unit]
+Description=c3-price-caster
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/arena/nodejs/bin/node /arena/app/backend/main.js
+WorkingDirectory=/arena/app
+EnvironmentFile=/root/env
+User=nobody
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=app_c3-price-caster
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
