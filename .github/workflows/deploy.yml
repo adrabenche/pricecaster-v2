@@ -83,12 +83,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: ${{ env.REAL_REF_NAME }}
-
-      - name: Remove cache info
-        shell: bash
-        working-directory: ./app
-        run: |
-          find . -type f -name 'tsconfig.tsbuildinfo' -exec echo {} \;
+          path: app
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v3
@@ -167,4 +162,4 @@ jobs:
       - name: Upload to S3
         shell: bash
         run: |
-          ./aws/dist/aws s3 cp artifacts/app.tgz s3://${{ env.AWS_BUCKET_ID }}/beta-price-caster/app.tgz --no-progress
+          ./aws/dist/aws s3 cp artifacts/app.tgz s3://${{ env.AWS_BUCKET_ID }}/beta-pricecaster/app.tgz --no-progress
