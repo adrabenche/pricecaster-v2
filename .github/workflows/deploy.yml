@@ -83,12 +83,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: ${{ env.REAL_REF_NAME }}
-
-      - name: Remove cache info
-        shell: bash
-        working-directory: ./app
-        run: |
-          find . -type f -name 'tsconfig.tsbuildinfo' -exec echo {} \;
+          path: app
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v3
