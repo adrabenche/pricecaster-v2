@@ -1,0 +1,170 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ambient:
+        type: choice
+        description: Target environment
+        default: 'dev'
+        options:
+        - dev
+        - staging
+        - prod
+        required: true
+      tag:
+        type: string
+        description: Optional tag/branch to use
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions: read-all
+    steps:
+      - name: Gather reference to use
+        shell: bash
+        run: |
+          # setup target ambient
+          if [ "${{ inputs.ambient }}" = "dev" ]; then
+            TARGET_AMBIENT="dev"
+          elif [ "${{ inputs.ambient }}" = "staging" ]; then
+            TARGET_AMBIENT="staging"
+          elif [ "${{ inputs.ambient }}" = "prod" ]; then
+            TARGET_AMBIENT="prod"
+          else
+            echo "Error: Invalid ambient environment specified"
+            exit 1
+          fi
+          # gather branch/tag/commit to use
+          if [ -z "${{ inputs.tag }}" ]; then
+            REAL_REF_NAME="refs/heads/master"
+          elif [[ "${{ inputs.tag }}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            REAL_REF_NAME="${{ inputs.tag }}"
+          elif [[ "${{ inputs.tag }}" == "refs/"* ]]; then
+            REAL_REF_NAME="${{ inputs.tag }}"
+          else
+            REAL_REF_NAME="refs/heads/${{ inputs.tag }}"
+          fi
+          # establish nodejs version to use
+          NODEJS_VERSION="16.19.0"
+          # setup environment
+          echo "Target environment: $TARGET_AMBIENT"
+          echo "   Using reference: $REAL_REF_NAME"
+          echo "TARGET_AMBIENT=$TARGET_AMBIENT" >> $GITHUB_ENV
+          echo "REAL_REF_NAME=$REAL_REF_NAME" >> $GITHUB_ENV
+          echo "NODEJS_VERSION=$NODEJS_VERSION" >> $GITHUB_ENV
+
+      - name: Setup target environment
+        shell: bash
+        run: |
+          case "${{ env.TARGET_AMBIENT }}" in
+            "dev")
+              echo "AWS_REGION=us-east-2" >> $GITHUB_ENV
+              echo "AWS_ACCESS_KEY_ID=${{ secrets.LEGACY_DEV_AWS_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+              echo "AWS_SECRET_ACCESS_KEY=${{ secrets.LEGACY_DEV_AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+              echo "AWS_BUCKET_ID=${{ secrets.LEGACY_DEV_AWS_S3_CODEDEPLOY_BUCKET_ID }}" >> $GITHUB_ENV
+              ;;
+            "staging")
+              echo "AWS_REGION=us-east-2" >> $GITHUB_ENV
+              echo "AWS_ACCESS_KEY_ID=${{ secrets.LEGACY_STAGING_AWS_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+              echo "AWS_SECRET_ACCESS_KEY=${{ secrets.LEGACY_STAGING_AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+              echo "AWS_BUCKET_ID=${{ secrets.LEGACY_STAGING_AWS_S3_CODEDEPLOY_BUCKET_ID }}" >> $GITHUB_ENV
+              ;;
+            "prod")
+              echo "AWS_REGION=us-east-2" >> $GITHUB_ENV
+              echo "AWS_ACCESS_KEY_ID=${{ secrets.LEGACY_AWS_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+              echo "AWS_SECRET_ACCESS_KEY=${{ secrets.LEGACY_AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+              echo "AWS_BUCKET_ID=${{ secrets.LEGACY_AWS_S3_CODEDEPLOY_BUCKET_ID }}" >> $GITHUB_ENV
+              ;;
+          esac
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ env.REAL_REF_NAME }}
+
+      - name: Remove cache info
+        shell: bash
+        working-directory: ./app
+        run: |
+          find . -type f -name 'tsconfig.tsbuildinfo' -exec echo {} \;
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODEJS_VERSION }}
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: ./app
+        run: |
+          npm install
+
+      - name: Compile project
+        shell: bash
+        working-directory: ./app
+        run: |
+          npm run build
+
+      - name: Preparing files for artifact
+        shell: bash
+        working-directory: ./app
+        run: |
+          COMMIT_HASH=$(git rev-parse HEAD)
+          #
+          mkdir -p ../artifacts/files/app/db
+          mkdir -p ../artifacts/files/app/node_modules
+          mkdir -p ../artifacts/files/nodejs
+          mkdir -p ../artifacts/files/env
+          #
+          echo "AMBIENT=${{ env.TARGET_AMBIENT }}" > ../artifacts/files/env/vars
+          echo "COMMIT_HASH=$COMMIT_HASH"          >> ../artifacts/files/env/vars
+          echo "NODEJS_VERSION=$NODEJS_VERSION"    >> ../artifacts/files/env/vars
+          # copy application files
+          cp -r dist/*         ../artifacts/files/app
+          cp -r node_modules/* ../artifacts/files/app/node_modules
+          cp -r db/*.db        ../artifacts/files/app/db
+          # download codedeploy files from the same commit as the executing action
+          echo "Using codedeploy scripts from SHA: ${{ github.workflow_sha }}"
+          cd ../artifacts
+          git clone --no-checkout https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }} temp-repo
+          cd temp-repo
+          git checkout ${{ github.workflow_sha }}
+          git config core.sparseCheckout true
+          git sparse-checkout init --cone
+          git sparse-checkout set .codedeploy
+          git read-tree -mu HEAD
+          cd ../../app
+          # copy codedeploy files
+          cp -r ../artifacts/temp-repo/.codedeploy/* ../artifacts/files
+          # download nodejs
+          curl -s "https://nodejs.org/dist/v${{ env.NODEJS_VERSION }}/node-v${{ env.NODEJS_VERSION }}-linux-x64.tar.gz" | tar -xz --strip-components 1 -C ../artifacts/files/nodejs
+          # update npm
+          OLD_PATH=$PATH
+          PARENT_DIR="$(dirname "$PWD")"
+          export PATH=$PARENT_DIR/artifacts/files/nodejs/bin:$PATH
+          npm i -g npm
+          export PATH=$OLD_PATH
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Creating compressed artifact
+        shell: bash
+        working-directory: ./artifacts/files
+        run: |
+          tar -czf ../app.tgz *
+
+      - name: Install AWS-cli
+        shell: bash
+        run : |
+          set -o pipefail
+          curl -f -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          [ $? -eq 0 ] || { echo "Error: Unable to download AWS Cli v2"; exit 1; }
+          unzip -u -qq awscliv2.zip
+          ./aws/dist/aws --version
+
+      - name: Upload to S3
+        shell: bash
+        run: |
+          ./aws/dist/aws s3 cp artifacts/app.tgz s3://${{ env.AWS_BUCKET_ID }}/beta-price-caster/app.tgz --no-progress
