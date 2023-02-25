@@ -162,4 +162,4 @@ jobs:
       - name: Upload to S3
         shell: bash
         run: |
-          ./aws/dist/aws s3 cp artifacts/app.tgz s3://${{ env.AWS_BUCKET_ID }}/beta-price-caster/app.tgz --no-progress
+          ./aws/dist/aws s3 cp artifacts/app.tgz s3://${{ env.AWS_BUCKET_ID }}/beta-pricecaster/app.tgz --no-progress
