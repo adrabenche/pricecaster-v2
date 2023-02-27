@@ -124,7 +124,7 @@ export function loadFromEnvironment (): IAppSettings {
   }
 
   if (env.ALGO_API === undefined) {
-    throw new Error('ALGO_TOKEN is not defined')
+    throw new Error('ALGO_API is not defined')
   }
 
   if (env.ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL === undefined) {

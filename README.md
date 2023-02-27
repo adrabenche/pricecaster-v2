@@ -1,7 +1,7 @@
 
 # Pricecaster Service
 
-**Version 7.0.0-alpha**
+**Version 7.5.0-alpha**
 
 - [Pricecaster Service](#pricecaster-service)
   * [Introduction](#introduction)
@@ -236,69 +236,32 @@ Bye.
 
 ## Backend Configuration
 
-The backend will read configuration from a `settings.ts` file pointed by the `PRICECASTER_SETTINGS` environment variable.  
+The backend will read configuration from a set of environment variables, as follow:
 
-The following settings are available:
 
 |Value|Description| 
 |-- |-- |
-|algo.token   | The token string for connecting the desired Algorand node.  | 
-|algo.api   | The API host URL for connecting the desired Algorand node.  | 
-|algo.port   | The port to connect to the desired Algorand node.  |  
-|algo.dumpFailedTx|  Set to `true` to dump failed transactions. Intended for debugging and analysis. |
-|algo.dumpFailedTxDirectory|  Destination of .STXN (signed-transaction) files for analysis. |
-| pyth.priceService.mainnet | The Pyth price service URL for mainnet connection |
-| pyth.priceService.testnet | The Pyth price service URL for testnet connection | 
-| pyth.priceService.pollIntervalMs | The interval between the block of prices are polled from the Pyth Price service | 
-|    apps.pricecasterAppId | The application Id of the deployed VAA priceKeeper V2 TEAL program |
-|    apps.ownerKeyFile| The file containing keys for the owner file. |
-| storage.db |  The SQLite database file used by the Pricecaster backend |
-| network |  Set to testnet or mainnet | 
-| debug.skipPublish | Set to `true` to just fetch the prices without publishing anything | 
+|PROM_PORT | The port where Prometheus metrics are exposed. |
+|REST_PORT | The port where the REST API is exposed. |
+|ALGO_TOKEN   | The token string for connecting the desired Algorand node.  | 
+|ALGO_API   | The API host URL for connecting the desired Algorand node.  | 
+|ALGO_PORT   | The port to connect to the desired Algorand node.  |  
+|ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL | The interval (in publications) between the node is queried for the current network parameters. |
+|PYTH_PRICESERVICE_MAINNET | The Pyth price service URL for mainnet connection |
+| PYTH_PRICESERVICE_TESTNET | The Pyth price service URL for testnet connection | 
+| PYTH_PRICESERVICE_POLL_INTERVAL_MS| The interval between the block of prices are polled from the Pyth Price service | 
+| PYTH_PRICESERVICE_REQUEST_BLOCKSIZE | The number of prices to pull from the Price service in each request |
+|    APPS_PRICECASTER_APPID | The application Id of the deployed VAA priceKeeper V2 TEAL program |
+|    APPS_OWNER_KEY_MNEMO| The secret mnemonic for the owner/operator |
+| STORAGE_DB |  The SQLite database file used by the Pricecaster backend |
+| NETWORK |  Set to testnet or mainnet | 
+| DEBUG_SKIP_PUBLISH | Set to `true` to just fetch the prices without publishing anything | 
 
-### Diagnosing failed transactions
 
-If a transaction fails, a diagnostic system is available where the group TX is dumped in a directory. To use this, set the relevant settings file:
-
-```
-  algo: {
-    ...
-    dumpFailedTx: true,
-    dumpFailedTxDirectory: './dump'
-  },
-```
-
-The dump directory will be filled with files named `failed-xxxx.stxn`.  You can use this file and `goal clerk` to trigger the stateless logic checks:
+It is possible to pass this variables as command line arguments to the `npm run start` command, for example:
 
 ```
-root@47d99e4cfffc:~/testnetwork/Node# goal clerk dryrun -t failed-1641324602942.stxn
-tx[0] trace:
-  1 intcblock 1 8 0 32 66 20 => <empty stack>
-  9 bytecblock 0x => <empty stack>
- 12 txn Fee => (1000 0x3e8)
- 14 pushint 1000 => (1000 0x3e8)
- .
- . 
- .
- 47 txn ApplicationID => (622608992 0x251c4260)
- 49 pushint 596576475 => (596576475 0x238f08db)
- 55 == => (0 0x0)
- 56 assert =>
- 56 assert failed pc=56
-
-REJECT
-ERROR: assert failed pc=56
-```
-
-In this example output, this means the logic failed due to mismatched stateful application id.
-
-
-For a stateful run, you must do a remote dryrun.  This is done by:
-
-```
-goal clerk dryrun -t failed-1641324602942.stxn  --dryrun-dump -o dump.dr
-goal clerk dryrun-remote -D dump.dr -v
-
+PROM_PORT=4885 REST_PORT=4884 PYTH_PRICESERVICE_MAINNET=https://xc-mainnet.pyth.network PYTH_PRICESERVICE_TESTNET=https://xc-testnet.pyth.network PYTH_PRICESERVICE_DEVNET=https://xc-testnet.pyth.network PYTH_PRICESERVICE_POLL_INTERVAL_MS=5000 PYTH_PRICESERVICE_REQUEST_BLOCKSIZE=10 LOG_APPNAME=pricecaster-v2 LOG_DISABLE_CONSOLE_LOG=false LOG_DEBUGLEVEL=1 ALGO_TOKEN= ALGO_API=http://node.testnet.algoexplorerapi.io/ ALGO_PORT= ALGO_GET_NETWORK_TX_PARAMS_CYCLE_INTERVAL=10 APPS_PRICECASTER_APPID=160693210 APPS_OWNER_KEY_MNEMO="..." STORAGE_DB=./db/pricecaster.db NETWORK=testnet npm run start
 ```
 
 ## Backend operation 
@@ -313,7 +276,7 @@ For development and initial production runs, preset slots can be bootstrapped us
 npm run bootstrap
 ```
 
-:warn: This command will zero the onchain contract pointed by the `pricecasterAppId` setting!  
+:warn: This command will zero the onchain contract pointed by the `APPS_PRICECASTER_APPID` setting!  
 
 After zeroing the contract, each slot will be assigned with the ASA ID specified.  Keep in mind that Pyth Price Ids must be mantained locally by the backend, as Pyth price ids are "chain agnostic". 
 
@@ -469,7 +432,7 @@ fffffff8                                                            exponent
 
 ## License
 
-Copyright 2022, 2023 Randlabs Inc. 
+Copyright 2022, 2023 C3. 
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
