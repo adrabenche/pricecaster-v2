@@ -10,9 +10,7 @@
     "prepare": "npm run build",
     "prepack": "npm run build",
     "start": "npm run compile && cross-env node dist/backend/main.js",
-    "start-dev": "npm run compile && cross-env node dist/backend/main.js",
     "bootstrap": "npm run compile && cross-env BOOTSTRAPDB=1 RESETSTATS=1 node dist/backend/main.js",
-    "bootstrap-dev": "npm run compile && cross-env BOOTSTRAPDB=1 RESETSTATS=1 node dist/backend/main.js",
     "start-production": "npm run compile && cross-env NODE_ENV='production' node dist/backend/main.js",
     "test-sc": "mocha -r ts-node/register test/test-sc.ts --timeout 60000"
   },
