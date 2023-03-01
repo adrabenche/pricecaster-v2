@@ -4,9 +4,9 @@
 
 The Pricecaster Onchain Program
 
-Version 7.1
+Version 7.5
 
-(c) 2022-23 Randlabs, inc.
+(c) 2022-23 C3 
 
 ------------------------------------------------------------------------------------------------
 v1.0 - first version
@@ -22,6 +22,7 @@ v6.5 - Use OpPull for budget maximization.
        Modify normalization price handling.
 v7.0 - C3-Testnet deployment version: Use linear-addressable global space for entries.
 v7.1 - Configuration flags.  Old publications are discarded.
+v7.5 - Fix checking attestation size 
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the Wormhole VAA verification transaction group.
@@ -360,7 +361,6 @@ def store():
 
         # ensure standard V2 format 150-byte attestation
         attestation_size.store(Btoi(Extract(pyth_payload.load(), PYTH_FIELD_ATTESTATION_SIZE_OFFSET, PYTH_FIELD_ATTESTATION_SIZE_LEN))),
-        XAssert(attestation_size.load() == Int(PYTH_ATTESTATION_V2_BYTES)),
         
         # this message size must agree with data in fields
         XAssert(attestation_size.load() * num_attestations.load() + PYTH_BEGIN_PAYLOAD_OFFSET == Len(pyth_payload.load())),
@@ -504,7 +504,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         clear_state_outfile = sys.argv[2]
 
-    print("Pricecaster V2 TEAL Program     Version 7.0, (c) 2022-23 Randlabs, inc.")
+    print("Pricecaster V2 TEAL Program     Version 7.5, (c) 2022-23 C3")
     print("Compiling approval program...")
 
     optimize_options = OptimizeOptions(scratch_slots=True)
