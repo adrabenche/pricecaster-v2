@@ -147,7 +147,6 @@ export class PricecasterDatabase {
   }
 
   setLastCycleTime (t: number) {
-    console.log(t)
     this.prepareAndExec('UPDATE Stats SET LastCycleTime = ? WHERE Id = 0', [t])
   }
 

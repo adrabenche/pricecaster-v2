@@ -256,6 +256,7 @@ The backend will read configuration from a set of environment variables, as foll
 | STORAGE_DB |  The SQLite database file used by the Pricecaster backend |
 | NETWORK |  Set to testnet or mainnet | 
 | DEBUG_SKIP_PUBLISH | Set to `true` to just fetch the prices without publishing anything | 
+| CACHE_POLICY | Set to 'OFF' to disable global state cache. Set to 'NEW_BLOCK' to cache Pricecaster global state on block availability |
 
 
 It is possible to pass this variables as command line arguments to the `npm run start` command, for example:
