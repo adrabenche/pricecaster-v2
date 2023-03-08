@@ -47,11 +47,9 @@ export class GlobalStateCache {
     if (this.running) {
       try {
         this.lastRound = (await this.algodClient.status().do())['last-round']
-        await this.algodClient.statusAfterBlock(this.lastRound + 1).do()
-        this.lastRound++
-        if (await this.update()) {
-          Logger.info('GlobalStateCache: updated state for round: ' + this.lastRound)
-        }
+        await this.algodClient.statusAfterBlock(this.lastRound).do()
+        await this.update()
+        Logger.info('GlobalStateCache: updated cache for block ' + this.lastRound)
         setImmediate(() => this.updateCacheLoop())
       } catch (e) {
         Logger.error('GlobalStateCache: updateCacheLoop: error: ' + e)
@@ -60,13 +58,8 @@ export class GlobalStateCache {
     }
   }
 
-  public async update (): Promise<boolean> {
-    if (this.running) {
-      this.cached = await this.pclib.readParseGlobalState()
-      return true
-    }
-
-    return false
+  public async update () {
+    this.cached = await this.pclib.readParseGlobalState()
   }
 
   public read () {

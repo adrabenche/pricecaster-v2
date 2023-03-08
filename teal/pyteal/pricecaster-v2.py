@@ -4,7 +4,7 @@
 
 The Pricecaster Onchain Program
 
-Version 7.5
+Version 7.5.1
 
 (c) 2022-23 C3 
 
@@ -23,6 +23,7 @@ v6.5 - Use OpPull for budget maximization.
 v7.0 - C3-Testnet deployment version: Use linear-addressable global space for entries.
 v7.1 - Configuration flags.  Old publications are discarded.
 v7.5 - Fix checking attestation size 
+v7.5.1 - Fixed regression in attestation publication
 
 This program stores price data verified from Pyth VAA messaging. To accept data, this application
 requires to be the last of the Wormhole VAA verification transaction group.
@@ -92,7 +93,6 @@ ALLOC_ASA_ID = Txn.application_args[1]
 FLAGS_ARG = Txn.application_args[1]
 SLOT_TEMP = ScratchVar(TealType.uint64)
 WORMHOLE_CORE_ID = App.globalGet(Bytes("coreid"))
-PYTH_ATTESTATION_V2_BYTES = 149
 
 PYTH_MAGIC_HEADER = Bytes("\x50\x32\x57\x48")
 PYTH_WIRE_FORMAT_MAJOR_VERSION = Bytes("\x00\x03")
@@ -359,7 +359,7 @@ def store():
         # must be one ASA ID for each attestation
         XAssert(Len(ASAID_SLOT_ARRAY) == ASAID_SLOT_TUPLE_SIZE * num_attestations.load()),
 
-        # ensure standard V2 format 150-byte attestation
+        # store attestation size present in this VAA.
         attestation_size.store(Btoi(Extract(pyth_payload.load(), PYTH_FIELD_ATTESTATION_SIZE_OFFSET, PYTH_FIELD_ATTESTATION_SIZE_LEN))),
         
         # this message size must agree with data in fields
@@ -372,7 +372,7 @@ def store():
 
         For(i.store(Int(0)), i.load() < num_attestations.load(), i.store(i.load() + Int(1))).Do(
             Seq([
-                attestation_data.store(Extract(pyth_payload.load(), PYTH_BEGIN_PAYLOAD_OFFSET + (Int(PYTH_ATTESTATION_V2_BYTES) * i.load()), Int(PYTH_ATTESTATION_V2_BYTES))),
+                attestation_data.store(Extract(pyth_payload.load(), PYTH_BEGIN_PAYLOAD_OFFSET + (attestation_size.load() * i.load()), attestation_size.load())),
                 asa_id.store(ExtractUint64(ASAID_SLOT_ARRAY, i.load() * ASAID_SLOT_TUPLE_SIZE)),
 
                 # Ensure status == 1
