@@ -25,7 +25,6 @@ import algosdk, { Account, Algodv2, assignGroupID, SuggestedParams } from 'algos
 import { getPriceIdsInVaa } from '../common/pythPayload'
 import { getWormholeCoreAppId, IAppSettings } from '../common/settings'
 import { SlotLayout } from '../common/slotLayout'
-import _ from 'underscore'
 import PricecasterLib, { PRICECASTER_CI, AsaIdSlot } from '../../lib/pricecaster'
 import { IPublisher } from './IPublisher'
 import { Statistics } from 'backend/engine/Stats'
@@ -54,7 +53,6 @@ export class PricecasterPublisher implements IPublisher {
   async start () {
     this.active = true
     const ssi = await this.pclib.readSystemSlot()
-    console.log(ssi)
     this.testModeFlag = (ssi.flags & 128) !== 0
     if (this.testModeFlag) {
       Logger.warn('Test-Mode deployed contract. Security and VAA verification checks will be bypassed.')
@@ -88,8 +86,9 @@ export class PricecasterPublisher implements IPublisher {
     pricesPublish.forEach((p) => {
       if (p.status === 'fulfilled') {
         this.stats.increaseSuccessTxCount()
+        //this.algodClient.pendingTransactionInformation(p.value.txId).do().then((pti) => { console.log(pti) })
       } else if (p.status === 'rejected') {
-        console.log('Transaction rejected. Reason: ' + p.reason)
+        Logger.error('Transaction rejected. Reason: ' + p.reason)
         this.stats.increaseFailedTxCount()
       }
     })

@@ -31,7 +31,7 @@ import { SlotLayout } from '../common/slotLayout'
 import { RestApi } from './RestApi'
 import { PricecasterDatabase } from './Database'
 import { PromClientApi } from './PromClient'
-const fs = require('fs')
+import { GlobalStateCache } from './GlobalStateCache'
 
 export type EngineSwitch = {
   publishEnable: boolean,
@@ -44,6 +44,7 @@ export class WormholeClientEngine implements IEngine {
   private stats!: Statistics
   private settings: IAppSettings
   private slotLayout!: SlotLayout
+  private globalStateCache!: GlobalStateCache
   private shouldQuit: boolean
   private restApi!: RestApi
   private promApi!: PromClientApi
@@ -63,6 +64,7 @@ export class WormholeClientEngine implements IEngine {
       Logger.warn('Received SIGINT')
       this.publisher.stop()
       this.fetcher.shutdown()
+      this.globalStateCache.stop()
       await Logger.finalize()
       this.restApi.stop()
       this.promApi.stop()
@@ -97,8 +99,12 @@ export class WormholeClientEngine implements IEngine {
       process.exit(0)
     }
 
+    Logger.info('Starting global state cache...')
+    this.globalStateCache = new GlobalStateCache(algodClient, ownerAccount, this.settings.apps.pricecasterAppId)
+    this.globalStateCache.start()
+
     Logger.info('Starting Rest API module...')
-    this.restApi = new RestApi(this.settings, this.slotLayout, this.stats)
+    this.restApi = new RestApi(this.settings, this.slotLayout, this.stats, this.globalStateCache)
     await this.restApi.init()
 
     Logger.info('Starting Prometheus API module...')
@@ -111,7 +117,7 @@ export class WormholeClientEngine implements IEngine {
     } else {
       this.publisher = new C3Publisher(algodClient, ownerAccount, this.stats, this.settings, this.slotLayout)
     }
-    this.fetcher = new PythPriceServiceFetcher(this.settings, this.stats, this.slotLayout)
+    this.fetcher = new PythPriceServiceFetcher(this.settings, this.stats, this.slotLayout, this.globalStateCache)
 
     Logger.info('Waiting for publisher to boot...')
     this.publisher.start()

@@ -44,7 +44,7 @@ export class PromClientApi {
       return res.send(await this.registry.metrics())
     })
 
-    await this.promServer.listen({ port: this.settings.prom.port })
+    await this.promServer.listen({ port: this.settings.prom.port, host: '0.0.0.0' })
   }
 
   async stop () {

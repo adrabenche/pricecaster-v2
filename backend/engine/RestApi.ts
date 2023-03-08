@@ -23,6 +23,8 @@ import { Statistics } from './Stats'
 import Fastify, { FastifyInstance, FastifyRequest } from 'fastify'
 import * as Logger from '@randlabs/js-logger'
 import { SlotLayout } from '../common/slotLayout'
+import { GlobalStateCache } from './GlobalStateCache'
+const JSONbig = require('json-bigint')
 
 type AssetRegisterBody = {
   asaId: number,
@@ -35,7 +37,8 @@ export class RestApi {
 
   constructor (readonly settings: IAppSettings,
     readonly slotLayout: SlotLayout,
-    readonly stats: Statistics) {
+    readonly stats: Statistics,
+    readonly globalStateCache: GlobalStateCache) {
     this.server = Fastify({ logger: true })
   }
 
@@ -51,6 +54,10 @@ export class RestApi {
     this.server.get('/health', async (req, reply) => ({
       health: 'ok'
     }))
+
+    this.server.get('/prices', async (req, reply) => {
+      return JSONbig.stringify(this.globalStateCache.read())
+    })
 
     this.server.post('/asset/register',
       {
@@ -88,7 +95,7 @@ export class RestApi {
         return { slotId }
       })
 
-    await this.server.listen({ port: this.settings.rest.port })
+    await this.server.listen({ port: this.settings.rest.port, host: '0.0.0.0' })
   }
 
   async stop () {

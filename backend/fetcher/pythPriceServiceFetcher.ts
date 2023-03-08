@@ -27,6 +27,7 @@ import { DataReadyCallback } from '../common/basetypes'
 import _ from 'underscore'
 import { SlotLayout } from '../common/slotLayout'
 import { Statistics } from 'backend/engine/Stats'
+import { GlobalStateCache } from 'backend/engine/GlobalStateCache'
 
 async function nullCallback (v: Buffer[]) {}
 
@@ -37,7 +38,8 @@ export class PythPriceServiceFetcher {
   private dataReadyCallback: DataReadyCallback = nullCallback
   private priceIds: string[] = []
 
-  constructor (readonly settings: IAppSettings, readonly stats: Statistics, readonly slotLayout: SlotLayout) {
+  constructor (readonly settings: IAppSettings, readonly stats: Statistics, readonly slotLayout: SlotLayout,
+    readonly globalStateCache: GlobalStateCache) {
     this.priceServiceConnection = new PriceServiceConnection2(this.settings.pyth.priceService[this.settings.network],
       this.settings.pyth.priceServiceConfiguration)
 

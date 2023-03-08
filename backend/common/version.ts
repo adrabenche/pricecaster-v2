@@ -17,5 +17,5 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export const PC_VERSION = '7.5.0'
+export const PC_VERSION = '7.5.1'
 export const PC_COPYRIGHT = 'Copyright (c) 2022, 23 Randlabs Inc.'

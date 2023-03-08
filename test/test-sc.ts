@@ -325,7 +325,7 @@ describe('Pricecaster App Tests', function () {
     await algosdk.waitForConfirmation(algodClient, paymentTxId.txId, 4)
     const tx = pclib.makeSetFlagsTx(altAccount.addr, 128, params)
     // eslint-disable-next-line prefer-regex-literals
-    const regex = new RegExp('logic eval error.*opcodes=pushint 448')
+    const regex = new RegExp('logic eval error.*opcodes=pushint 447')
     await expect(algodClient.sendRawTransaction(tx.signTxn(altAccount.sk)).do()).to.be.rejectedWith(regex)
   })
 
@@ -400,7 +400,7 @@ describe('Pricecaster App Tests', function () {
   })
 
   it('Must fail to store data in incorrect slot', async function () {
-    await testFailCase(19, 1, 0, 85000000, undefined, 390)
+    await testFailCase(19, 1, 0, 85000000, undefined, 389)
   })
 
   it('Must handle one attestation at index 0 with enough opcode budget', async function () {
